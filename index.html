@@ -1,0 +1,1762 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>筋トレログ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 { font-size: 20px; font-weight: 700; margin-bottom: 20px; color: #ff4444; }
+    .card {
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .card h2 { font-size: 12px; color: #666; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    input[type="text"], input[type="number"], input[type="password"] {
+      background: #2a2a2a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: 16px;
+      padding: 10px 12px;
+      width: 100%;
+    }
+    input[type="text"].exercise { flex: 2; }
+    input[type="number"] { flex: 1; }
+    input::placeholder { color: #555; }
+    button.primary {
+      width: 100%;
+      padding: 14px;
+      background: #ff4444;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    button.primary:active { background: #cc3333; }
+    button.secondary {
+      width: 100%;
+      padding: 10px;
+      background: #2a2a2a;
+      color: #888;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .stat-row { display: flex; justify-content: space-between; gap: 10px; }
+    .stat { flex: 1; text-align: center; }
+    .stat .value { font-size: 26px; font-weight: 800; color: #ff4444; }
+    .stat .label { font-size: 11px; color: #666; margin-top: 2px; }
+    .log-list { list-style: none; }
+    .log-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid #222;
+      font-size: 15px;
+    }
+    .log-item:last-child { border-bottom: none; }
+    .log-name { font-weight: 600; }
+    .log-detail { color: #777; font-size: 13px; margin-top: 2px; }
+    .log-vol { color: #ff4444; font-weight: 700; font-size: 14px; }
+    .empty { color: #444; text-align: center; padding: 20px 0; font-size: 14px; }
+    .status { font-size: 12px; color: #555; text-align: center; margin-top: 12px; }
+
+    /* チアアップカード */
+    #cheer-card {
+      display: none;
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      border: 1px solid #ff4444;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      animation: fadeIn 0.4s ease;
+    }
+    #cheer-card h2 { color: #ff4444; }
+    #cheer-text {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #eee;
+      margin-top: 8px;
+    }
+    .cheer-loading {
+      color: #555;
+      font-size: 14px;
+      animation: pulse 1s infinite;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+    /* 記録トースト */
+    #record-toast {
+      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: #1a1a1a; border: 1px solid #ff4444;
+      border-radius: 14px; padding: 14px 20px;
+      display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      z-index: 9999; min-width: 240px; max-width: 320px;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+      opacity: 0; pointer-events: none;
+    }
+    #record-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+    .toast-check { font-size: 22px; color: #ff4444; font-weight: 900; flex-shrink: 0; }
+    .toast-body { flex: 1; }
+    .toast-exercise { font-size: 15px; font-weight: 700; color: #fff; }
+    .toast-detail { font-size: 12px; color: #888; margin-top: 2px; }
+    .toast-vol { font-size: 13px; color: #ff4444; font-weight: 700; margin-top: 2px; }
+
+    /* PR バッジ */
+    .pr-badge {
+      display: inline-block;
+      background: #ff4444;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* チャット */
+    #chat-log { max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+    .chat-q {
+      align-self: flex-end;
+      background: #2a2a2a;
+      border-radius: 12px 12px 2px 12px;
+      padding: 10px 14px;
+      font-size: 14px;
+      max-width: 85%;
+    }
+    .chat-a {
+      align-self: flex-start;
+      background: #1e1e2e;
+      border: 1px solid #333;
+      border-radius: 12px 12px 12px 2px;
+      padding: 10px 14px;
+      font-size: 14px;
+      line-height: 1.7;
+      max-width: 90%;
+      color: #ddd;
+    }
+    .chat-a.loading { color: #555; animation: pulse 1s infinite; }
+    .chat-a table { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 13px; }
+    .chat-a th, .chat-a td { border: 1px solid #444; padding: 6px 10px; text-align: left; }
+    .chat-a th { background: #2a2a2a; color: #ff4444; }
+    .chat-a ul { padding-left: 18px; margin-top: 4px; }
+    .chat-a li { margin-bottom: 3px; }
+
+    select option { background: #1a1a1a; color: #fff; }
+
+    /* カレンダー */
+    .cal-dow {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      text-align: center; font-size: 11px; color: #555;
+      margin-bottom: 4px;
+    }
+    .cal-days {
+      display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+    }
+    .cal-day {
+      border-radius: 6px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      font-size: 12px; cursor: pointer; position: relative;
+      background: #222; gap: 1px; padding: 4px 0; min-height: 52px;
+    }
+    .cal-day.empty { background: none; cursor: default; }
+    .cal-day.today { border: 1px solid #555; }
+    .cal-day.has-strength { background: #5a0000; color: #ff8888; font-weight: 700; }
+    .cal-day.has-cardio::after {
+      content: ''; position: absolute; bottom: 3px; right: 3px;
+      width: 5px; height: 5px; border-radius: 50%; background: #44cc44;
+    }
+    .cal-day.has-both { background: #3a0030; }
+    .cal-day:not(.empty):hover { filter: brightness(1.3); }
+
+    /* ストリーク */
+    .streak-bar {
+      background: linear-gradient(135deg, #1a0000, #2a0800);
+      border: 1px solid #ff4444;
+      border-radius: 12px; padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .streak-num { font-size: 36px; font-weight: 900; color: #ff4444; line-height: 1; }
+    .streak-label { font-size: 12px; color: #888; margin-top: 2px; }
+    .streak-right { text-align: right; font-size: 13px; color: #666; }
+
+    /* PR殿堂 */
+    .pr-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 0; border-bottom: 1px solid #222; font-size: 14px;
+    }
+    .pr-row:last-child { border-bottom: none; }
+    .pr-exercise { font-weight: 600; }
+    .pr-kg { color: #ff4444; font-weight: 800; font-size: 16px; }
+    .pr-date { color: #555; font-size: 12px; }
+
+    /* 部位図 */
+    .body-svg-wrap { display: flex; justify-content: center; margin-top: 10px; }
+    .muscle-part { transition: fill 0.3s; }
+    .muscle-active { fill: #ff4444 !important; }
+    .muscle-cardio { fill: #44cc44 !important; }
+
+    /* タブ */
+    .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab {
+      flex: 1; padding: 10px; text-align: center;
+      background: #1a1a1a; border: 1px solid #333;
+      border-radius: 8px; font-size: 14px; font-weight: 600;
+      cursor: pointer; color: #666;
+    }
+    .tab.active { background: #ff4444; border-color: #ff4444; color: #fff; }
+
+    /* 有酸素チアカード */
+    #cardio-cheer-card {
+      display: none;
+      background: linear-gradient(135deg, #1a2e1a, #16310e);
+      border: 1px solid #44cc44;
+      border-radius: 12px; padding: 16px; margin-bottom: 16px;
+      animation: fadeIn 0.4s ease;
+    }
+    #cardio-cheer-card h2 { color: #44cc44; }
+    #cardio-cheer-text { font-size: 15px; line-height: 1.7; color: #eee; margin-top: 8px; }
+    .log-cardio { color: #44cc44; font-weight: 700; font-size: 14px; }
+
+    /* 体重グラフ */
+    .weight-graph { display: flex; align-items: flex-end; gap: 4px; height: 60px; margin-top: 12px; }
+    .weight-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .weight-bar { width: 100%; background: #ff4444; border-radius: 3px 3px 0 0; min-height: 2px; }
+    .weight-bar-label { font-size: 9px; color: #666; }
+    .weight-bar-val { font-size: 9px; color: #ff8888; }
+
+    /* 設定画面 */
+    .setup-desc { color: #666; font-size: 13px; margin-bottom: 12px; line-height: 1.6; }
+    .setup-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+
+    /* ボリューム推移グラフ */
+    .vol-graph-wrap { overflow-x: auto; margin-top: 12px; }
+    .vol-graph-wrap svg text { font-family: -apple-system, sans-serif; }
+
+    /* 削除ボタン */
+    .del-btn {
+      background: none; border: none; color: #444; font-size: 18px;
+      cursor: pointer; padding: 2px 6px; line-height: 1; flex-shrink: 0;
+    }
+    .del-btn:hover { color: #ff4444; }
+
+    /* 筋肉疲労チェッカー */
+    .fatigue-grid { display: flex; gap: 12px; align-items: flex-start; margin-top: 10px; }
+    .fatigue-legend { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+    .fatigue-item { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .fatigue-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .fatigue-muscle { font-weight: 700; }
+    .fatigue-days { color: #666; font-size: 12px; }
+  </style>
+</head>
+<body>
+
+<!-- 初回設定画面 -->
+<div id="setup-screen" style="display:none">
+  <h1>💪 筋トレログ</h1>
+  <div class="card">
+    <h2>初回設定</h2>
+    <p class="setup-desc">各APIキーを入力してください。ブラウザに保存されます（1回だけ）。</p>
+    <p class="setup-label">GitHub Personal Access Token</p>
+    <div class="input-row" style="margin-bottom:12px">
+      <input type="password" id="setup-gh-token" placeholder="ghp_xxxxxxxx">
+    </div>
+    <p class="setup-label">Google Gemini API Key</p>
+    <div class="input-row">
+      <input type="password" id="setup-gemini-key" placeholder="AIzaSy...">
+    </div>
+    <p class="setup-desc" style="color:#ff8800;font-size:12px;margin-top:10px;margin-bottom:0">⚠ トークンはブラウザに保存されます。Fine-grainedトークンを使い、スコープを「Contents: Read and write」のみに絞ることを強く推奨します。</p>
+    <button class="primary" onclick="saveSetup()">設定して始める</button>
+  </div>
+</div>
+
+<!-- メイン画面 -->
+<div id="main-screen" style="display:none">
+  <h1>💪 筋トレログ</h1>
+
+  <!-- ストリーク -->
+  <div class="streak-bar" id="streak-bar">
+    <div>
+      <div class="streak-num" id="streak-num">0</div>
+      <div class="streak-label">日連続トレーニング中</div>
+    </div>
+    <div class="streak-right" id="streak-sub"></div>
+  </div>
+
+  <!-- チアアップ（筋トレ） -->
+  <div id="cheer-card">
+    <h2>🔥 トレーナーより</h2>
+    <p id="cheer-text"></p>
+  </div>
+
+  <!-- チアアップ（有酸素） -->
+  <div id="cardio-cheer-card">
+    <h2>トレーナーより</h2>
+    <p id="cardio-cheer-text"></p>
+  </div>
+
+  <!-- タブ -->
+  <div class="tabs">
+    <div class="tab active" id="tab-strength" onclick="switchTab('strength')">筋トレ</div>
+    <div class="tab" id="tab-cardio" onclick="switchTab('cardio')">有酸素</div>
+  </div>
+
+  <!-- 筋トレ入力 -->
+  <div id="section-strength">
+    <!-- 体重 -->
+    <div class="card">
+      <h2>体重</h2>
+      <div class="input-row" style="align-items:center;gap:10px">
+        <input type="number" id="weight-input" placeholder="例：72.5" min="30" max="200" step="0.1" style="flex:1;font-size:20px;font-weight:700">
+        <span style="color:#888;font-size:14px">kg</span>
+        <button class="primary" onclick="saveWeight()" style="width:auto;padding:10px 18px;margin-top:0">記録</button>
+      </div>
+      <div id="weight-today" style="font-size:13px;color:#666;margin-top:6px"></div>
+      <div class="weight-graph" id="weight-graph"></div>
+    </div>
+    <div class="card">
+      <h2>記録する</h2>
+      <div class="input-row">
+        <select id="exercise-select" onchange="onExerciseSelect()" style="flex:2;background:#2a2a2a;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px;padding:10px 12px;">
+          <option value="">種目を選ぶ</option>
+        </select>
+      </div>
+      <div class="input-row" id="exercise-new-row" style="display:none">
+        <input type="text" class="exercise" id="exercise-new" placeholder="新しい種目名を入力">
+      </div>
+      <div class="input-row">
+        <input type="number" id="kg" placeholder="kg" min="0" step="0.5">
+        <input type="number" id="reps" placeholder="回数" min="1">
+        <input type="number" id="sets" placeholder="セット" min="1" value="1">
+      </div>
+      <button class="primary" onclick="addLog()">記録する</button>
+    </div>
+
+    <div class="card">
+      <h2>累計ボリューム</h2>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="value" id="daily-total">0</div>
+          <div class="label">今日 (kg)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="weekly-total">0</div>
+          <div class="label">今週 (kg)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="monthly-total">0</div>
+          <div class="label">今月 (kg)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>週別ボリューム推移</h2>
+      <div class="vol-graph-wrap" id="vol-graph-wrap">
+        <div class="empty" style="padding:10px 0">データを読み込み中...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>今日のログ</h2>
+      <ul class="log-list" id="today-log">
+        <li class="empty">まだ記録がありません</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- 有酸素入力 -->
+  <div id="section-cardio" style="display:none">
+    <div class="card">
+      <h2>有酸素記録</h2>
+      <div class="input-row">
+        <select id="cardio-type" style="flex:1;background:#2a2a2a;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px;padding:10px 12px;">
+          <option value="エアロバイク">エアロバイク</option>
+          <option value="ランニング">ランニング</option>
+          <option value="ウォーキング">ウォーキング</option>
+          <option value="ロウイング">ロウイング</option>
+          <option value="その他">その他</option>
+        </select>
+      </div>
+      <div class="input-row">
+        <input type="number" id="cardio-load" placeholder="負荷（例：8）" min="1" max="30" style="flex:1">
+        <input type="number" id="cardio-min" placeholder="分数（例：45）" min="1" style="flex:1">
+      </div>
+      <button class="primary" onclick="addCardio()">記録する</button>
+    </div>
+
+    <div class="card">
+      <h2>有酸素 累計</h2>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="value" id="cardio-daily-min">0</div>
+          <div class="label">今日 (分)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="cardio-weekly-min">0</div>
+          <div class="label">今週 (分)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="cardio-monthly-min">0</div>
+          <div class="label">今月 (分)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>今日の有酸素ログ</h2>
+      <ul class="log-list" id="today-cardio-log">
+        <li class="empty">まだ記録がありません</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- カレンダー -->
+  <div class="card">
+    <h2>トレーニングカレンダー</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <button onclick="calPrev()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:0 8px">&#8249;</button>
+      <span id="cal-title" style="font-weight:700;font-size:15px;color:#fff"></span>
+      <button onclick="calNext()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:0 8px">&#8250;</button>
+    </div>
+    <div id="cal-grid"></div>
+    <div id="cal-detail" style="margin-top:12px;font-size:13px;color:#aaa;min-height:20px"></div>
+    <div class="body-svg-wrap" id="body-svg-wrap" style="display:none">
+      <svg width="120" height="220" viewBox="0 0 120 220" xmlns="http://www.w3.org/2000/svg">
+        <!-- 頭 -->
+        <circle cx="60" cy="18" r="14" fill="#333"/>
+        <!-- 首 -->
+        <rect x="55" y="30" width="10" height="10" fill="#333"/>
+        <!-- 胸 -->
+        <rect id="svg-chest" class="muscle-part" x="35" y="40" width="50" height="30" rx="4" fill="#333"/>
+        <!-- 腹 -->
+        <rect id="svg-abs" class="muscle-part" x="40" y="72" width="40" height="28" rx="4" fill="#333"/>
+        <!-- 左上腕 -->
+        <rect id="svg-arms" class="muscle-part" x="18" y="42" width="14" height="35" rx="4" fill="#333"/>
+        <!-- 右上腕 -->
+        <rect id="svg-arms2" class="muscle-part" x="88" y="42" width="14" height="35" rx="4" fill="#333"/>
+        <!-- 左前腕 -->
+        <rect x="16" y="80" width="12" height="28" rx="4" fill="#2a2a2a"/>
+        <!-- 右前腕 -->
+        <rect x="92" y="80" width="12" height="28" rx="4" fill="#2a2a2a"/>
+        <!-- 背中（後ろ側イメージ：影） -->
+        <rect id="svg-back" class="muscle-part" x="37" y="41" width="46" height="28" rx="4" fill="#333" opacity="0.5"/>
+        <!-- 左脚 -->
+        <rect id="svg-legs" class="muscle-part" x="38" y="104" width="18" height="55" rx="4" fill="#333"/>
+        <!-- 右脚 -->
+        <rect id="svg-legs2" class="muscle-part" x="64" y="104" width="18" height="55" rx="4" fill="#333"/>
+        <!-- 左ふくらはぎ -->
+        <rect x="39" y="162" width="16" height="35" rx="4" fill="#2a2a2a"/>
+        <!-- 右ふくらはぎ -->
+        <rect x="65" y="162" width="16" height="35" rx="4" fill="#2a2a2a"/>
+        <!-- 肩左 -->
+        <ellipse id="svg-shoulders" class="muscle-part" cx="28" cy="44" rx="10" ry="8" fill="#333"/>
+        <!-- 肩右 -->
+        <ellipse id="svg-shoulders2" class="muscle-part" cx="92" cy="44" rx="10" ry="8" fill="#333"/>
+        <!-- ラベル -->
+        <text x="60" y="58" text-anchor="middle" font-size="8" fill="#888">胸</text>
+        <text x="60" y="90" text-anchor="middle" font-size="8" fill="#888">腹</text>
+        <text x="25" y="62" text-anchor="middle" font-size="7" fill="#888">腕</text>
+        <text x="60" y="135" text-anchor="middle" font-size="8" fill="#888">脚</text>
+        <text x="28" y="42" text-anchor="middle" font-size="7" fill="#888">肩</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 筋肉疲労チェッカー -->
+  <div class="card">
+    <h2>筋肉疲労チェッカー</h2>
+    <div class="fatigue-grid">
+      <div class="fatigue-legend" id="fatigue-legend">
+        <div class="empty">記録を追加すると表示されます</div>
+      </div>
+      <div class="body-svg-wrap">
+        <svg width="110" height="210" viewBox="0 0 120 220" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="60" cy="18" r="14" fill="#2a2a2a" stroke="#444" stroke-width="0.8"/>
+          <rect x="55" y="30" width="10" height="10" fill="#2a2a2a"/>
+          <rect id="fat-chest" x="35" y="40" width="50" height="30" rx="4" fill="#3a3a3a"/>
+          <rect id="fat-abs" x="40" y="72" width="40" height="28" rx="4" fill="#3a3a3a"/>
+          <rect id="fat-arms" x="18" y="42" width="14" height="35" rx="4" fill="#3a3a3a"/>
+          <rect id="fat-arms2" x="88" y="42" width="14" height="35" rx="4" fill="#3a3a3a"/>
+          <rect x="16" y="80" width="12" height="28" rx="4" fill="#2a2a2a"/>
+          <rect x="92" y="80" width="12" height="28" rx="4" fill="#2a2a2a"/>
+          <rect id="fat-back" x="37" y="41" width="46" height="28" rx="4" fill="#3a3a3a" opacity="0.6"/>
+          <rect id="fat-legs" x="38" y="104" width="18" height="55" rx="4" fill="#3a3a3a"/>
+          <rect id="fat-legs2" x="64" y="104" width="18" height="55" rx="4" fill="#3a3a3a"/>
+          <rect x="39" y="162" width="16" height="35" rx="4" fill="#2a2a2a"/>
+          <rect x="65" y="162" width="16" height="35" rx="4" fill="#2a2a2a"/>
+          <ellipse id="fat-shoulders" cx="28" cy="44" rx="10" ry="8" fill="#3a3a3a"/>
+          <ellipse id="fat-shoulders2" cx="92" cy="44" rx="10" ry="8" fill="#3a3a3a"/>
+          <text x="60" y="58" text-anchor="middle" font-size="8" fill="#888">胸</text>
+          <text x="60" y="90" text-anchor="middle" font-size="8" fill="#888">腹</text>
+          <text x="25" y="62" text-anchor="middle" font-size="7" fill="#888">腕</text>
+          <text x="60" y="135" text-anchor="middle" font-size="8" fill="#888">脚</text>
+          <text x="28" y="42" text-anchor="middle" font-size="7" fill="#888">肩</text>
+        </svg>
+      </div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:#666">
+      <span><span style="color:#ff4444">■</span> 要休養（0〜1日）</span>
+      <span><span style="color:#ff8800">■</span> 回復中（2〜3日）</span>
+      <span><span style="color:#44cc44">■</span> 準備OK（4日+）</span>
+    </div>
+  </div>
+
+  <!-- PR殿堂 -->
+  <div class="card">
+    <h2>PR殿堂 — 種目別自己ベスト</h2>
+    <div id="pr-list"><div class="empty">記録がありません</div></div>
+  </div>
+
+  <!-- トレーナーに質問 -->
+  <div class="card">
+    <h2>トレーナーに質問</h2>
+    <div id="chat-log"></div>
+    <div class="input-row" style="margin-top:10px;gap:8px">
+      <input type="text" id="chat-input" placeholder="例：ベンチの前回記録は？今月サボってる？" style="flex:1">
+      <button class="primary" onclick="askTrainer()" style="width:auto;padding:10px 16px;margin-top:0">送信</button>
+    </div>
+  </div>
+
+  <p class="status" id="status">読み込み中...</p>
+  <button class="secondary" onclick="resetSetup()">設定リセット</button>
+</div>
+
+<!-- 記録トースト -->
+<div id="record-toast">
+  <div class="toast-check">✓</div>
+  <div class="toast-body">
+    <div class="toast-exercise" id="toast-exercise"></div>
+    <div class="toast-detail" id="toast-detail"></div>
+    <div class="toast-vol" id="toast-vol"></div>
+  </div>
+</div>
+
+<script>
+const OWNER        = 'artista03';
+const REPO         = 'workout-log';
+const FILE         = 'logs.json';
+const CARDIO_FILE  = 'cardio_logs.json';
+
+let GH_TOKEN      = '';
+let GEMINI_KEY    = '';
+let logs          = [];
+let cardioLogs    = [];
+let fileSha       = null;
+let cardioFileSha = null;
+
+// ── 日付ユーティリティ ───────────────────────────
+function today() { return nowJST().toISOString().slice(0, 10); }
+function nowJST() {
+  const d = new Date();
+  d.setTime(d.getTime() + 9 * 60 * 60 * 1000);
+  return d;
+}
+function weekStart() {
+  const d = nowJST();
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().slice(0, 10);
+}
+function monthStr() { return nowJST().toISOString().slice(0, 7); }
+
+// ── 設定 ────────────────────────────────────────
+function saveSetup() {
+  const gh  = document.getElementById('setup-gh-token').value.trim();
+  const gem = document.getElementById('setup-gemini-key').value.trim();
+  if (!gh || !gem) { alert('両方のキーを入力してください'); return; }
+  localStorage.setItem('gh_token', gh);
+  localStorage.setItem('gemini_key', gem);
+  GH_TOKEN   = gh;
+  GEMINI_KEY = gem;
+  showMain();
+}
+function resetSetup() {
+  localStorage.removeItem('gh_token');
+  localStorage.removeItem('gemini_key');
+  location.reload();
+}
+function showMain() {
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('main-screen').style.display  = 'block';
+  loadLogs();
+  loadCardioLogs();
+  loadWeightLogs();
+}
+
+// ── タブ切り替え ─────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('section-strength').style.display = tab === 'strength' ? 'block' : 'none';
+  document.getElementById('section-cardio').style.display   = tab === 'cardio'   ? 'block' : 'none';
+  document.getElementById('tab-strength').className = 'tab' + (tab === 'strength' ? ' active' : '');
+  document.getElementById('tab-cardio').className   = 'tab' + (tab === 'cardio'   ? ' active' : '');
+}
+
+// ── GitHub API ──────────────────────────────────
+async function loadLogs() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (res.status === 404) {
+      logs = []; fileSha = null;
+      document.getElementById('status').textContent = '新規スタート ✓';
+    } else {
+      const data = await res.json();
+      fileSha = data.sha;
+      logs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
+      document.getElementById('status').textContent = `ログ読込済 (${logs.length}件)`;
+    }
+  } catch(e) {
+    document.getElementById('status').textContent = 'エラー: ' + e.message;
+  }
+  renderAll();
+  updateExerciseSelect();
+  renderCalendar();
+}
+
+async function saveLogs() {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(logs, null, 2))));
+  const body = { message: `log ${today()}`, content, ...(fileSha ? { sha: fileSha } : {}) };
+  const res  = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 409) {
+    // SHAが古い：最新SHAを取得してリトライ
+    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (fresh.ok) { const d = await fresh.json(); fileSha = d.sha; }
+    return saveLogs();
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  fileSha = data.content.sha;
+}
+
+// ── 有酸素 GitHub API ────────────────────────────
+async function loadCardioLogs() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${CARDIO_FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (res.status === 404) {
+      cardioLogs = []; cardioFileSha = null;
+    } else {
+      const data = await res.json();
+      cardioFileSha = data.sha;
+      cardioLogs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
+    }
+  } catch(e) { cardioLogs = []; }
+  renderCardio();
+}
+
+async function saveCardioLogs() {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(cardioLogs, null, 2))));
+  const body = { message: `cardio ${today()}`, content, ...(cardioFileSha ? { sha: cardioFileSha } : {}) };
+  const res  = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${CARDIO_FILE}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 409) {
+    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${CARDIO_FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (fresh.ok) { const d = await fresh.json(); cardioFileSha = d.sha; }
+    return saveCardioLogs();
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  cardioFileSha = data.content.sha;
+}
+
+// ── 有酸素 記録追加 ──────────────────────────────
+async function addCardio() {
+  const load = parseInt(document.getElementById('cardio-load').value);
+  const min  = parseInt(document.getElementById('cardio-min').value);
+  if (!load || !min) { alert('負荷と分数を入力してください'); return; }
+
+  const exercise = document.getElementById('cardio-type').value;
+  const entry = { date: today(), ts: Date.now(), exercise, load, min };
+  cardioLogs.push(entry);
+  renderCardio();
+
+  document.getElementById('cardio-load').value = '';
+  document.getElementById('cardio-min').value  = '';
+  document.getElementById('cardio-load').focus();
+
+  // チアアップ＆保存
+  showCardioCheerLoading();
+  const [cheer] = await Promise.all([
+    getCardioCheer(entry),
+    saveCardioLogs().catch(e => {
+      document.getElementById('status').textContent = '保存エラー: ' + e.message;
+    })
+  ]);
+  showCardioCheer(cheer);
+  document.getElementById('status').textContent = '保存完了 ✓';
+}
+
+function showCardioCheerLoading() {
+  const card = document.getElementById('cardio-cheer-card');
+  card.style.display = 'block';
+  document.getElementById('cardio-cheer-text').innerHTML = '<span class="cheer-loading">トレーナーが分析中...</span>';
+}
+function showCardioCheer(text) {
+  document.getElementById('cardio-cheer-text').textContent = text;
+}
+
+async function getCardioCheer(entry) {
+  const t = today(), w = weekStart(), m = monthStr();
+  const todayMin   = cardioLogs.filter(e => e.date === t).reduce((s,e) => s+e.min, 0);
+  const weeklyMin  = cardioLogs.filter(e => e.date >= w).reduce((s,e) => s+e.min, 0);
+  const monthlyMin = cardioLogs.filter(e => e.date.slice(0,7) === m).reduce((s,e) => s+e.min, 0);
+  const totalSessions = cardioLogs.length;
+  const avgLoad = cardioLogs.length > 1
+    ? Math.round(cardioLogs.slice(0,-1).reduce((s,e) => s+e.load, 0) / (cardioLogs.length-1) * 10) / 10
+    : null;
+  const maxLoad = cardioLogs.length > 1 ? Math.max(...cardioLogs.slice(0,-1).map(e => e.load)) : 0;
+  const isPRLoad = maxLoad > 0 && entry.load > maxLoad;
+  const last5 = [...cardioLogs].slice(-6,-1).map(e => `負荷${e.load}×${e.min}分`).join(' → ');
+
+  const prompt = `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
+
+${buildProfileContext()}
+
+【今日の${entry.exercise}記録】
+負荷: ${entry.load}
+時間: ${entry.min}分
+${isPRLoad ? `★★★ 負荷の自己ベスト更新！（過去最高 ${maxLoad} → 今日 ${entry.load}）` : ''}
+
+【有酸素データ】
+過去最高負荷: ${maxLoad || 'なし'}
+直近の推移: ${last5 || 'なし'}
+平均負荷: ${avgLoad !== null ? avgLoad : 'なし'}
+今日の合計: ${todayMin}分
+今週の合計: ${weeklyMin}分
+今月の合計: ${monthlyMin}分
+累計セッション数: ${totalSessions}回
+
+上記を踏まえ、2〜3文で励ませ。
+ルール：
+- 必ず2〜3文で終わらせる。それ以上書くな
+- マークダウン記法（**、*、#、箇条書き）は絶対禁止
+- 具体的な数字を1つ使う
+- 有酸素の積み上げを彼の哲学（BTC・海賊・商社・旦那衆）のどれかと絡める
+- 口調は「だ・である」調でテンション高め
+- 絵文字は使わない`;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 200, temperature: 0.9 }
+        })
+      }
+    );
+    const data = await res.json();
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '記録完了！心肺も鍛えろ！';
+  } catch(e) {
+    return '記録完了！積み上げてるぞ！';
+  }
+}
+
+// ── 有酸素 表示 ──────────────────────────────────
+function renderCardio() {
+  const t = today(), w = weekStart(), m = monthStr();
+  const sum = (filter) => cardioLogs.filter(filter).reduce((s,e) => s+e.min, 0);
+  document.getElementById('cardio-daily-min').textContent   = sum(e => e.date === t);
+  document.getElementById('cardio-weekly-min').textContent  = sum(e => e.date >= w);
+  document.getElementById('cardio-monthly-min').textContent = sum(e => e.date.slice(0,7) === m);
+
+  const todayCardio = cardioLogs.filter(e => e.date === t).reverse();
+  const ul = document.getElementById('today-cardio-log');
+  if (todayCardio.length === 0) {
+    ul.innerHTML = '<li class="empty">まだ記録がありません</li>';
+  } else {
+    ul.innerHTML = todayCardio.map(e => `
+      <li class="log-item">
+        <div style="flex:1">
+          <div class="log-name">${e.exercise || 'エアロバイク'}</div>
+          <div class="log-detail">負荷 ${e.load} × ${e.min}分</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px">
+          <div class="log-cardio">${e.min}分</div>
+          <button class="del-btn" onclick="deleteCardioLog(${e.ts})" title="削除">×</button>
+        </div>
+      </li>`).join('');
+  }
+}
+
+// ── 体重 ─────────────────────────────────────────
+const WEIGHT_FILE = 'weight_logs.json';
+let weightLogs    = [];
+let weightFileSha = null;
+
+async function loadWeightLogs() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (res.status === 404) { weightLogs = []; weightFileSha = null; }
+    else {
+      const data = await res.json();
+      weightFileSha = data.sha;
+      weightLogs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
+    }
+  } catch(e) { weightLogs = []; }
+  renderWeight();
+}
+
+async function saveWeight() {
+  const val = parseFloat(document.getElementById('weight-input').value);
+  if (!val || val < 30 || val > 200) { alert('体重を入力してください'); return; }
+
+  // 今日分は上書き
+  const existing = weightLogs.findIndex(e => e.date === today());
+  const entry = { date: today(), kg: val };
+  if (existing >= 0) weightLogs[existing] = entry;
+  else weightLogs.push(entry);
+  weightLogs.sort((a,b) => a.date.localeCompare(b.date));
+
+  renderWeight();
+  document.getElementById('weight-input').value = '';
+
+  // 保存
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(weightLogs, null, 2))));
+  const body = { message: `weight ${today()}`, content, ...(weightFileSha ? { sha: weightFileSha } : {}) };
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 409) {
+    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
+      headers: { Authorization: `token ${GH_TOKEN}` }
+    });
+    if (fresh.ok) { const d = await fresh.json(); weightFileSha = d.sha; }
+    return saveWeight();
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  weightFileSha = data.content.sha;
+}
+
+function renderWeight() {
+  const t = today();
+  const todayW = weightLogs.find(e => e.date === t);
+  const lastW = weightLogs.length ? weightLogs[weightLogs.length - 1] : null;
+
+  // 今日未記録なら前回値を入力欄にプリセット
+  if (!todayW && lastW) {
+    const inp = document.getElementById('weight-input');
+    if (!inp.value) inp.value = lastW.kg;
+  }
+
+  document.getElementById('weight-today').textContent =
+    todayW ? `今日: ${todayW.kg} kg` :
+    lastW  ? `前回 (${lastW.date}): ${lastW.kg} kg — 今日はまだ未記録` :
+    '今日はまだ未記録';
+
+  // 直近14件のグラフ
+  const recent = weightLogs.slice(-14);
+  if (recent.length < 2) { document.getElementById('weight-graph').innerHTML = ''; return; }
+  const vals = recent.map(e => e.kg);
+  const min = Math.min(...vals) - 1;
+  const max = Math.max(...vals) + 1;
+  const range = max - min || 1;
+
+  document.getElementById('weight-graph').innerHTML = recent.map(e => {
+    const h = Math.round(((e.kg - min) / range) * 52) + 4;
+    const dateLabel = e.date.slice(5).replace('-', '/');
+    return `<div class="weight-bar-wrap">
+      <div class="weight-bar-val">${e.kg}</div>
+      <div class="weight-bar" style="height:${h}px"></div>
+      <div class="weight-bar-label">${dateLabel}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── プルダウン管理 ───────────────────────────────
+function getExerciseList() {
+  const fromLogs = [...new Set(logs.map(e => e.exercise))];
+  const fromStorage = JSON.parse(localStorage.getItem('exercise_list') || '[]');
+  return [...new Set([...fromLogs, ...fromStorage])].filter(Boolean);
+}
+
+function saveExerciseList(list) {
+  localStorage.setItem('exercise_list', JSON.stringify(list));
+}
+
+function updateExerciseSelect() {
+  const sel = document.getElementById('exercise-select');
+  const current = sel.value;
+  const list = getExerciseList();
+  sel.innerHTML = '<option value="">種目を選ぶ</option>'
+    + list.map(e => `<option value="${e}">${e}</option>`).join('')
+    + '<option value="__new__">＋ 新しい種目</option>';
+  if (current) sel.value = current;
+}
+
+function onExerciseSelect() {
+  const sel = document.getElementById('exercise-select');
+  const newRow = document.getElementById('exercise-new-row');
+  newRow.style.display = sel.value === '__new__' ? 'flex' : 'none';
+  if (sel.value === '__new__') document.getElementById('exercise-new').focus();
+}
+
+function getSelectedExercise() {
+  const sel = document.getElementById('exercise-select');
+  if (sel.value === '__new__') return document.getElementById('exercise-new').value.trim();
+  return sel.value;
+}
+
+// ── 記録追加 ────────────────────────────────────
+async function addLog() {
+  const exercise = getSelectedExercise();
+  const kg       = parseFloat(document.getElementById('kg').value);
+  const reps     = parseInt(document.getElementById('reps').value);
+  const sets     = parseInt(document.getElementById('sets').value) || 1;
+  if (!exercise || !kg || !reps) { alert('種目・kg・回数を入力してください'); return; }
+
+  // 新種目をリストに保存
+  const list = getExerciseList();
+  if (!list.includes(exercise)) {
+    saveExerciseList([...list, exercise]);
+    updateExerciseSelect();
+  }
+
+  const entry = { date: today(), ts: Date.now(), exercise, kg, reps, sets, volume: kg * reps * sets };
+  logs.push(entry);
+  renderAll();
+  renderCalendar();
+
+  // 入力リセット
+  document.getElementById('exercise-select').value = '';
+  document.getElementById('exercise-new').value = '';
+  document.getElementById('exercise-new-row').style.display = 'none';
+  document.getElementById('kg').value = '';
+  document.getElementById('reps').value = '';
+  document.getElementById('sets').value = '1';
+
+  // 記録トースト表示
+  const exAllForPR = logs.filter(l => l.exercise === entry.exercise);
+  const maxKgForPR = exAllForPR.length > 1 ? Math.max(...exAllForPR.slice(0,-1).map(l => l.kg)) : 0;
+  showRecordToast(entry, maxKgForPR > 0 && entry.kg > maxKgForPR);
+
+  // チアアップ（並行して保存）
+  showCheerLoading();
+  const [cheer] = await Promise.all([
+    getCheer(entry),
+    saveLogs().then(() => {
+      document.getElementById('status').textContent = '保存完了 ✓';
+    }).catch(e => {
+      document.getElementById('status').textContent = '保存エラー: ' + e.message;
+    })
+  ]);
+  showCheer(cheer);
+}
+
+// ── 削除 ─────────────────────────────────────────
+async function deleteLog(ts) {
+  if (!confirm('この記録を削除しますか？')) return;
+  const idx = logs.findIndex(l => l.ts === ts);
+  if (idx < 0) return;
+  logs.splice(idx, 1);
+  renderAll();
+  renderCalendar();
+  await saveLogs().then(() => {
+    document.getElementById('status').textContent = '削除完了 ✓';
+  }).catch(e => {
+    document.getElementById('status').textContent = '削除エラー: ' + e.message;
+  });
+}
+
+async function deleteCardioLog(ts) {
+  if (!confirm('この記録を削除しますか？')) return;
+  const idx = cardioLogs.findIndex(l => l.ts === ts);
+  if (idx < 0) return;
+  cardioLogs.splice(idx, 1);
+  renderCardio();
+  renderCalendar();
+  await saveCardioLogs().then(() => {
+    document.getElementById('status').textContent = '削除完了 ✓';
+  }).catch(e => {
+    document.getElementById('status').textContent = '削除エラー: ' + e.message;
+  });
+}
+
+// ── Gemini チアアップ ────────────────────────────
+function buildPrompt(entry) {
+  const exLogs = logs.filter(e => e.exercise === entry.exercise);
+  const maxKg  = exLogs.length > 1 ? Math.max(...exLogs.slice(0,-1).map(e => e.kg)) : 0;
+  const isPR   = maxKg > 0 && entry.kg > maxKg;
+
+  // 過去5回の重量推移
+  const last5 = exLogs.slice(-6, -1).map(e => `${e.kg}kg`).join(' → ');
+
+  // ボリューム比較
+  const t = today(), w = weekStart(), m = monthStr();
+  const dailyVol  = calcTotal(e => e.date === t);
+  const weekVol   = calcTotal(e => e.date >= w);
+  const monthVol  = calcTotal(e => e.date.slice(0,7) === m);
+
+  // 先週比
+  const lastWeekStart = new Date(w); lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const lastWeekEnd   = new Date(w); lastWeekEnd.setDate(lastWeekEnd.getDate() - 1);
+  const lwStr  = lastWeekStart.toISOString().slice(0,10);
+  const lweStr = lastWeekEnd.toISOString().slice(0,10);
+  const lastWeekVol = calcTotal(e => e.date >= lwStr && e.date <= lweStr);
+  const weekDiff = lastWeekVol > 0 ? Math.round((weekVol - lastWeekVol) / lastWeekVol * 100) : null;
+
+  // 連続日数
+  const streak = calcStreak();
+
+  // 総トレーニング日数
+  const totalDays = new Set(logs.map(e => e.date)).size;
+
+  // 当日累計重量
+  const dailyTon = (dailyVol / 1000).toFixed(2);
+
+  // 当日ボリュームの45歳男性基準（体重80kg前後・週3〜4日トレーニング想定）
+  const volBenchmarks = { light: 3000, avg: 6000, good: 9000, elite: 13000 };
+  const volLevel = dailyVol >= volBenchmarks.elite ? `エリートレベル（${volBenchmarks.elite/1000}t超）` :
+                   dailyVol >= volBenchmarks.good  ? `良好（${volBenchmarks.good/1000}〜${volBenchmarks.elite/1000}t）` :
+                   dailyVol >= volBenchmarks.avg   ? `標準（${volBenchmarks.avg/1000}〜${volBenchmarks.good/1000}t）` :
+                   dailyVol >= volBenchmarks.light ? `軽め（${volBenchmarks.light/1000}〜${volBenchmarks.avg/1000}t）` :
+                                                     `ウォームアップ級（${volBenchmarks.light/1000}t未満）`;
+
+  // 体重（未記録なら80kgをデフォルト）
+  const latestWeight = weightLogs.length ? weightLogs[weightLogs.length-1].kg : 80;
+
+  // 1RM推定（エプリー式）: weight × (1 + reps/30)
+  const estimated1RM = Math.round(entry.kg * (1 + entry.reps / 30));
+
+  // 種目別・45歳男性基準（1RMベース、体重比）
+  const BENCHMARKS = {
+    ベンチプレス:    { avg: 0.75, mid: 1.0,  elite: 1.25 },
+    スクワット:      { avg: 1.0,  mid: 1.3,  elite: 1.6  },
+    デッドリフト:    { avg: 1.2,  mid: 1.5,  elite: 1.8  },
+    ショルダープレス: { avg: 0.5,  mid: 0.65, elite: 0.85 },
+    ラットプルダウン: { avg: 0.6,  mid: 0.8,  elite: 1.0  },
+  };
+  let benchmark = null;
+  for (const [name, vals] of Object.entries(BENCHMARKS)) {
+    if (entry.exercise.includes(name) || name.includes(entry.exercise)) {
+      benchmark = { name, avg: Math.round(latestWeight * vals.avg), mid: Math.round(latestWeight * vals.mid), elite: Math.round(latestWeight * vals.elite) };
+      break;
+    }
+  }
+  let benchmarkText = '';
+  if (benchmark) {
+    const diff = estimated1RM - benchmark.avg;
+    const level = estimated1RM >= benchmark.elite ? 'アスリートレベル' : estimated1RM >= benchmark.mid ? '中級者レベル' : estimated1RM >= benchmark.avg ? '平均以上' : '平均以下';
+    benchmarkText = `
+【45歳・${latestWeight}kg男性の${benchmark.name}基準（1RMベース）】
+平均: ${benchmark.avg}kg ／ 中級者: ${benchmark.mid}kg ／ アスリート: ${benchmark.elite}kg
+今回の推定1RM: ${entry.kg}kg×${entry.reps}回 → 推定1RM ${estimated1RM}kg（平均比 ${diff >= 0 ? '+' : ''}${diff}kg・${level}）`;
+  } else {
+    benchmarkText = `\n推定1RM: ${estimated1RM}kg（体重${latestWeight}kgの${(estimated1RM / latestWeight).toFixed(2)}倍）`;
+  }
+
+  return `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
+
+${buildProfileContext()}
+
+【今の記録】
+種目: ${entry.exercise}
+重量: ${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット
+ボリューム: ${entry.volume.toLocaleString()}kg
+${isPR ? `★★★ 自己ベスト更新！（前回最高 ${maxKg}kg → 今日 ${entry.kg}kg）` : ''}
+${benchmarkText}
+
+【この種目の履歴】
+過去最高重量: ${maxKg > 0 ? maxKg + 'kg' : '初記録'}
+直近の推移: ${last5 || 'データなし'}
+累計セット数: ${exLogs.length}セット目
+
+【累計データ】
+今日の総ボリューム: ${dailyVol.toLocaleString()}kg（${dailyTon}トン）→ 45歳・80kg男性基準：${volLevel}
+今週の総ボリューム: ${weekVol.toLocaleString()}kg${weekDiff !== null ? `（先週比 ${weekDiff > 0 ? '+' : ''}${weekDiff}%）` : ''}
+今月の総ボリューム: ${monthVol.toLocaleString()}kg
+連続トレーニング日数: ${streak}日
+総トレーニング日数: ${totalDays}日
+
+【トレーナーの指示】
+以下の2文だけを書け。それ以上もそれ以下も禁止。マークダウン・絵文字・箇条書き禁止。
+
+1文目：推定1RM ${estimated1RM}kgと45歳・${latestWeight}kg男性の平均${benchmark ? benchmark.avg + 'kg' : '体重比'}を比べて評価しろ。平均を上回っているなら「平均より○kg上だ」と称え、下回っているなら「あと○kgで平均に届く、次は○kgを目指せ」と具体的目標を言え。
+2文目：今日${dailyTon}トンは45歳男性基準で${volLevel}だと言い、BTC・塩飽水軍・旦那衆・商社のどれか1つを使った完結した文章で締めろ（キーワードだけで終わるな。必ず動詞で文を終わらせろ）。
+
+絶対禁止ワード：「次も頑張れ」「頑張ろう」「素晴らしい」「継続」「積み重ね」「keep」。
+口調：「だ・である」調、テンション高め。`;
+}
+
+async function getCheer(entry) {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildPrompt(entry) }] }],
+          generationConfig: { maxOutputTokens: 320, temperature: 0.9 }
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.error) return `APIエラー: ${data.error.code} ${data.error.message?.slice(0,80)}`;
+    if (data.promptFeedback?.blockReason) return `ブロック: ${data.promptFeedback.blockReason}`;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) return `レスポンス異常: ${JSON.stringify(data).slice(0,120)}`;
+    return text;
+  } catch(e) {
+    return `通信エラー: ${e.message}`;
+  }
+}
+
+// ── 記録トースト ─────────────────────────────────
+let _toastTimer = null;
+function showRecordToast(entry, isPR) {
+  document.getElementById('toast-exercise').textContent = entry.exercise + (isPR ? '  🏆 PR更新！' : '');
+  document.getElementById('toast-detail').textContent = `${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット`;
+  document.getElementById('toast-vol').textContent = `このセット ${entry.volume.toLocaleString()}kg`;
+  const toast = document.getElementById('record-toast');
+  if (isPR) toast.style.borderColor = '#ffaa00';
+  else toast.style.borderColor = '#ff4444';
+  toast.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+function showCheerLoading() {
+  const card = document.getElementById('cheer-card');
+  card.style.display = 'block';
+  document.getElementById('cheer-text').innerHTML = '<span class="cheer-loading">トレーナーが分析中...</span>';
+}
+function showCheer(text) {
+  document.getElementById('cheer-text').textContent = text;
+}
+
+// ── 集計 ────────────────────────────────────────
+function calcTotal(filterFn) {
+  return logs.filter(filterFn).reduce((sum, e) => sum + e.volume, 0);
+}
+
+function daysBetween(a, b) {
+  // T12:00:00（正午）を使いUTC日付切り替えの影響を回避
+  return Math.round((new Date(a + 'T12:00:00') - new Date(b + 'T12:00:00')) / 86400000);
+}
+
+function calcStreak() {
+  const dates = [...new Set(logs.map(e => e.date))].sort().reverse();
+  if (dates.length === 0) return 0;
+  let streak = 0;
+  let cur = today();
+  for (const d of dates) {
+    const diff = daysBetween(cur, d);
+    if (diff <= 1) { streak++; cur = d; }
+    else break;
+  }
+  return streak;
+}
+
+// ── 表示 ────────────────────────────────────────
+// ── ボリューム推移グラフ ─────────────────────────
+function renderVolumeGraph() {
+  const wrap = document.getElementById('vol-graph-wrap');
+  if (!wrap) return;
+
+  // 過去8週分の週開始日を計算
+  const weeks = [];
+  const base = new Date();
+  base.setDate(base.getDate() - base.getDay()); // 今週の日曜
+  for (let i = 7; i >= 0; i--) {
+    const d = new Date(base);
+    d.setDate(d.getDate() - i * 7);
+    const start = d.toISOString().slice(0, 10);
+    const end = new Date(d.getTime() + 6 * 86400000).toISOString().slice(0, 10);
+    const label = `${d.getMonth()+1}/${d.getDate()}`;
+    const vol = logs.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + e.volume, 0);
+    weeks.push({ label, vol });
+  }
+
+  const maxVol = Math.max(...weeks.map(w => w.vol), 1);
+  const W = 44, H = 80, gap = 4;
+  const totalW = weeks.length * (W + gap) - gap + 40;
+  const bars = weeks.map((w, i) => {
+    const barH = Math.max(2, Math.round((w.vol / maxVol) * H));
+    const x = 20 + i * (W + gap);
+    const y = H - barH + 20;
+    const color = i === weeks.length - 1 ? '#ff4444' : '#553333';
+    const volLabel = w.vol >= 1000 ? `${(w.vol/1000).toFixed(1)}k` : w.vol > 0 ? String(w.vol) : '';
+    return `
+      <rect x="${x}" y="${y}" width="${W}" height="${barH}" rx="3" fill="${color}"/>
+      ${w.vol > 0 ? `<text x="${x + W/2}" y="${y - 3}" text-anchor="middle" font-size="9" fill="${i===weeks.length-1?'#ff8888':'#666'}">${volLabel}</text>` : ''}
+      <text x="${x + W/2}" y="${H + 32}" text-anchor="middle" font-size="9" fill="${i===weeks.length-1?'#aaa':'#555'}">${w.label}</text>`;
+  }).join('');
+
+  wrap.innerHTML = `<svg width="${totalW}" height="${H + 40}" viewBox="0 0 ${totalW} ${H + 40}">
+    <text x="10" y="14" font-size="9" fill="#555">kg</text>
+    ${bars}
+  </svg>`;
+}
+
+// ── 筋肉疲労チェッカー ───────────────────────────
+function renderFatigue() {
+  const MUSCLES = ['胸','背中','脚','肩','腕','腹'];
+  const SVG_IDS = {
+    胸: ['fat-chest', 'fat-back'],
+    背中: ['fat-back'],
+    脚: ['fat-legs', 'fat-legs2'],
+    肩: ['fat-shoulders', 'fat-shoulders2'],
+    腕: ['fat-arms', 'fat-arms2'],
+    腹: ['fat-abs']
+  };
+
+  // 各部位の最終トレ日を探す
+  const lastDays = {};
+  for (const muscle of MUSCLES) {
+    const exList = MUSCLE_MAP[muscle] || [];
+    let latest = null;
+    for (const e of logs) {
+      if (exList.some(ex => e.exercise.includes(ex) || ex.includes(e.exercise))) {
+        if (!latest || e.date > latest) latest = e.date;
+      }
+    }
+    if (latest) {
+      const diff = Math.floor((new Date(today()) - new Date(latest)) / 86400000);
+      lastDays[muscle] = diff;
+    } else {
+      lastDays[muscle] = null;
+    }
+  }
+
+  // 色分けロジック
+  function fatigueColor(days) {
+    if (days === null) return '#3a3a3a';        // 未トレ
+    if (days <= 1)    return '#ff4444';         // 要休養
+    if (days <= 3)    return '#ff8800';         // 回復中
+    return '#44cc44';                           // 準備OK
+  }
+  function fatigueLabel(days) {
+    if (days === null) return '未トレ';
+    if (days === 0)    return '今日';
+    if (days === 1)    return '昨日';
+    return `${days}日前`;
+  }
+
+  // SVGボディの色を更新
+  for (const muscle of MUSCLES) {
+    const color = fatigueColor(lastDays[muscle]);
+    for (const id of (SVG_IDS[muscle] || [])) {
+      const el = document.getElementById(id);
+      if (el) el.setAttribute('fill', color);
+    }
+  }
+
+  // 凡例リスト
+  const legend = document.getElementById('fatigue-legend');
+  if (!legend) return;
+  legend.innerHTML = MUSCLES.map(muscle => {
+    const days = lastDays[muscle];
+    const color = fatigueColor(days);
+    const label = fatigueLabel(days);
+    const status = days === null ? '未トレ' : days <= 1 ? '要休養' : days <= 3 ? '回復中' : '準備OK';
+    return `<div class="fatigue-item">
+      <div class="fatigue-dot" style="background:${color}"></div>
+      <span class="fatigue-muscle">${muscle}</span>
+      <span class="fatigue-days">${label}・${status}</span>
+    </div>`;
+  }).join('');
+}
+
+function renderAll() {
+  const t = today(), w = weekStart(), m = monthStr();
+  document.getElementById('daily-total').textContent   = calcTotal(e => e.date === t).toLocaleString();
+  document.getElementById('weekly-total').textContent  = calcTotal(e => e.date >= w).toLocaleString();
+  document.getElementById('monthly-total').textContent = calcTotal(e => e.date.slice(0,7) === m).toLocaleString();
+  renderStreak();
+  renderPR();
+  renderVolumeGraph();
+  renderFatigue();
+
+  const todayLogs = logs.filter(e => e.date === t).slice().sort((a,b) => (a.ts||0)-(b.ts||0));
+  const ul = document.getElementById('today-log');
+  if (todayLogs.length === 0) {
+    ul.innerHTML = '<li class="empty">まだ記録がありません</li>';
+  } else {
+    ul.innerHTML = todayLogs.map((e, i) => {
+      const exAll = logs.filter(l => l.exercise === e.exercise);
+      const maxKg = Math.max(...exAll.map(l => l.kg));
+      const isPR  = e.kg >= maxKg && exAll.length > 1;
+      // 時刻表示
+      const timeStr = e.ts ? new Date(e.ts).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '';
+      // インターバル計算
+      let intervalStr = '';
+      if (i > 0 && e.ts && todayLogs[i-1].ts) {
+        const diffSec = Math.round((e.ts - todayLogs[i-1].ts) / 1000);
+        const m = Math.floor(diffSec / 60), s = diffSec % 60;
+        intervalStr = `前セットから ${m}分${s}秒`;
+      } else if (i === 0 && e.ts) {
+        intervalStr = 'スタート';
+      }
+      return `
+        <li class="log-item">
+          <div style="flex:1">
+            <div class="log-name">${e.exercise}${isPR ? '<span class="pr-badge">PR</span>' : ''}</div>
+            <div class="log-detail">${e.kg}kg × ${e.reps}回 × ${e.sets}セット</div>
+            ${timeStr ? `<div style="font-size:11px;color:#555;margin-top:3px">${timeStr}${intervalStr ? ' · ' + intervalStr : ''}</div>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <div class="log-vol">${e.volume.toLocaleString()}kg</div>
+            <button class="del-btn" onclick="deleteLog(${e.ts})" title="削除">×</button>
+          </div>
+        </li>`;
+    }).join('');
+  }
+}
+
+// ── トレーナーへの質問 ──────────────────────────
+function renderMarkdown(text) {
+  const lines = text.split('\n');
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim().startsWith('|')) {
+      const tableLines = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      out.push(buildTable(tableLines));
+    } else if (/^[-*]\s/.test(line.trim())) {
+      const items = [];
+      while (i < lines.length && /^[-*]\s/.test(lines[i].trim())) {
+        items.push(`<li>${lines[i].trim().slice(2)}</li>`);
+        i++;
+      }
+      out.push(`<ul>${items.join('')}</ul>`);
+    } else {
+      out.push(line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'));
+      i++;
+    }
+  }
+  return out.join('<br>').replace(/(<br>)+$/, '');
+}
+
+function buildTable(rows) {
+  const isSep = r => /^\|[-|: ]+\|$/.test(r.trim().replace(/ /g, ''));
+  const parse = r => r.split('|').slice(1, -1).map(c => c.trim());
+  let html = '<table>';
+  let isHeader = true;
+  for (const row of rows) {
+    if (isSep(row)) { isHeader = false; continue; }
+    const cells = parse(row);
+    const tag = isHeader ? 'th' : 'td';
+    html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+    if (isHeader) isHeader = false;
+  }
+  return html + '</table>';
+}
+
+async function askTrainer() {
+  const input = document.getElementById('chat-input');
+  const q = input.value.trim();
+  if (!q) return;
+  input.value = '';
+  input.blur();
+
+  const chatLog = document.getElementById('chat-log');
+
+  // 質問表示
+  const qEl = document.createElement('div');
+  qEl.className = 'chat-q';
+  qEl.textContent = q;
+  chatLog.appendChild(qEl);
+
+  // ローディング
+  const aEl = document.createElement('div');
+  aEl.className = 'chat-a loading';
+  aEl.textContent = '考え中...';
+  chatLog.appendChild(aEl);
+  chatLog.scrollTop = chatLog.scrollHeight;
+
+  const answer = await askGemini(q);
+  aEl.className = 'chat-a';
+  aEl.innerHTML = renderMarkdown(answer);
+  chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function buildChatPrompt(question) {
+  // ログを種目別に集計してサマリーを作る
+  const byExercise = {};
+  for (const e of logs) {
+    if (!byExercise[e.exercise]) byExercise[e.exercise] = [];
+    byExercise[e.exercise].push(e);
+  }
+
+  const summaries = Object.entries(byExercise).map(([ex, entries]) => {
+    const sorted  = [...entries].sort((a,b) => a.date.localeCompare(b.date));
+    const maxKg   = Math.max(...entries.map(e => e.kg));
+    const lastKg  = sorted[sorted.length-1].kg;
+    const lastDate = sorted[sorted.length-1].date;
+    const totalVol = entries.reduce((s,e) => s+e.volume, 0);
+    const last3 = sorted.slice(-3).map(e => `${e.date} ${e.kg}kg×${e.reps}回×${e.sets||1}セット`).join(' / ');
+    return `・${ex}：過去最高${maxKg}kg、直近${lastDate}に${lastKg}kg、累計ボリューム${totalVol.toLocaleString()}kg\n  直近3回：${last3}`;
+  }).join('\n');
+
+  const totalDays = new Set(logs.map(e => e.date)).size;
+  const streak = calcStreak();
+  const t = today(), w = weekStart(), m = monthStr();
+  const weekVol  = calcTotal(e => e.date >= w);
+  const monthVol = calcTotal(e => e.date.slice(0,7) === m);
+  const weekCardioMin  = cardioLogs.filter(e => e.date >= w).reduce((s,e) => s+e.min, 0);
+  const monthCardioMin = cardioLogs.filter(e => e.date.slice(0,7) === m).reduce((s,e) => s+e.min, 0);
+  const last5Cardio = [...cardioLogs].slice(-5).map(e => `${e.date} 負荷${e.load}×${e.min}分`).join(' / ');
+
+  return `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
+
+${buildProfileContext()}
+
+【全トレーニングデータ】
+総トレーニング日数: ${totalDays}日
+連続記録中: ${streak}日
+今週のボリューム: ${weekVol.toLocaleString()}kg
+今月のボリューム: ${monthVol.toLocaleString()}kg
+
+【種目別サマリー】
+${summaries || 'まだデータなし'}
+
+【筋トレ生データ（直近20件）】
+${logs.slice(-20).map(e => `${e.date} ${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット`).join('\n')}
+
+【有酸素データ】
+今週: ${weekCardioMin}分 / 今月: ${monthCardioMin}分
+直近5回: ${last5Cardio || 'なし'}
+
+【質問】
+${question}
+
+上記データをもとに、今井陽介本人に語りかけるように回答しろ。
+ルール：
+- ユーザーが「表で」「箇条書きで」「一覧で」「ならべて」など形式を指定したら必ずその形式で答えろ
+- 形式指定がない場合は普通の文章で答えろ（マークダウン記法は不要）
+- データに基づいて具体的に
+- 口調は「だ・である」調でテンション高め
+- 絵文字は使わない`;
+}
+
+async function askGemini(question) {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildChatPrompt(question) }] }],
+          generationConfig: { maxOutputTokens: 800, temperature: 0.85 }
+        })
+      }
+    );
+    const data = await res.json();
+    if (data.error) return `APIエラー ${data.error.code}: ${data.error.message.slice(0,100)}`;
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || `不明なレスポンス: ${JSON.stringify(data).slice(0,100)}`;
+  } catch(e) {
+    return 'ネットワークエラー: ' + e.message;
+  }
+}
+
+// ── Enterキー ────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  const active = document.activeElement;
+  if (active === document.getElementById('chat-input')) {
+    askTrainer();
+  } else if (active === document.getElementById('weight-input')) {
+    saveWeight();
+  } else if (active === document.getElementById('cardio-load') || active === document.getElementById('cardio-min')) {
+    addCardio();
+  } else if (
+    document.getElementById('main-screen').style.display !== 'none' &&
+    document.getElementById('section-strength').style.display !== 'none'
+  ) {
+    addLog();
+  }
+});
+
+// ── プロフィールコンテキスト生成 ─────────────────
+function buildProfileContext() {
+  const latestWeight = weightLogs.length ? weightLogs[weightLogs.length-1].kg : null;
+  const bw = latestWeight || '未記録';
+
+  // 生年月日から正確な年齢を計算
+  const birthDate = new Date(1980, 6, 25); // 1980年7月25日
+  const now = new Date();
+  let age = now.getFullYear() - birthDate.getFullYear();
+  if (now < new Date(now.getFullYear(), birthDate.getMonth(), birthDate.getDate())) age--;
+
+  // 種目別PR一覧
+  const prMap = {};
+  for (const e of logs) {
+    if (!prMap[e.exercise] || e.kg > prMap[e.exercise]) prMap[e.exercise] = e.kg;
+  }
+  const prList = Object.entries(prMap).map(([ex, kg]) => `${ex}: ${kg}kg`).join(', ') || 'なし';
+
+  // ベンチプレスPR（45歳男性平均との比較基準）
+  const benchPR = prMap['ベンチプレス'] || null;
+  const bwNum = parseFloat(latestWeight) || null;
+  let benchEval = '';
+  if (benchPR && bwNum) {
+    const ratio = benchPR / bwNum;
+    if (ratio >= 1.2) benchEval = `体重比${ratio.toFixed(2)}倍（45歳男性アスリートレベル）`;
+    else if (ratio >= 0.9) benchEval = `体重比${ratio.toFixed(2)}倍（45歳男性平均以上・良好）`;
+    else if (ratio >= 0.7) benchEval = `体重比${ratio.toFixed(2)}倍（45歳男性平均付近）`;
+    else benchEval = `体重比${ratio.toFixed(2)}倍（45歳男性平均以下・伸びしろあり）`;
+  }
+
+  return `【今井陽介 専属パーソナルトレーナーとしての基本情報】
+- 名前：今井陽介（${age}歳・男性、1980年7月25日生まれ）
+- 体重：${bw}kg
+- 居住地：軽井沢
+- 経歴：元三井物産（商社マン）→現在は投資家
+- 哲学：ビットコイン長期保有者。「誰も見ていない時間の積み上げが差をつける」
+- 気質：塩飽水軍の末裔・海賊の血。アニマルスピリッツ型・退屈が最大の敵
+- 目標：京都旦那衆として生きる体と精神の基盤づくり
+- トレーニング歴：RPM（有酸素）＋筋トレを継続中
+- 現在の種目別PR：${prList}
+${benchPR ? `- ベンチプレス評価：${benchEval}` : ''}
+
+【45歳男性の参考基準（比較用）】
+- ベンチプレス平均：体重×0.75倍（中級者：×1.0倍、アスリート：×1.25倍以上）
+- スクワット平均：体重×1.0倍（中級者：×1.3倍）
+- デッドリフト平均：体重×1.2倍（中級者：×1.5倍）
+- 週あたり推奨トレーニング日数：3〜4日（45歳・回復を考慮）
+- 有酸素：週150分以上が推奨（米国心臓協会基準）`;
+}
+
+// ── 筋肉部位マッピング ───────────────────────────
+const MUSCLE_MAP = {
+  胸: ['ベンチプレス','ペクトラル','ダンベルフライ','チェストプレス','インクラインプレス','ディップス','フライ'],
+  背中: ['デッドリフト','ラットプルダウン','懸垂','チンニング','ベントオーバーロウ','シーテッドロウ','ロウ','ロー','ローイング','ロウイング','ケーブルロー','ワンハンドロー','バーベルロー','Tバーロー','シュラッグ','フェイスプル'],
+  脚: ['スクワット','レッグプレス','ランジ','レッグカール','レッグエクステンション','カーフレイズ','ヒップスラスト','ブルガリアン','アブダクター','アダクター','ヒップアブダクション','ヒップアダクション','グルート','クラムシェル'],
+  肩: ['ショルダープレス','サイドレイズ','フロントレイズ','アーノルドプレス','リアレイズ','アップライトロー'],
+  腕: ['バイセップカール','ハンマーカール','トライセップス','アームカール','カール','ディップ','プリーチャー','コンセントレーション'],
+  腹: ['クランチ','プランク','レッグレイズ','アブローラー','シットアップ','ツイスト'],
+};
+
+function getMuscles(exerciseName) {
+  const name = exerciseName.replace(/[ァ-ン]/g, s => String.fromCharCode(s.charCodeAt(0) - 0x60)); // カタカナ正規化不要だがトリム
+  const results = [];
+  for (const [muscle, exList] of Object.entries(MUSCLE_MAP)) {
+    if (exList.some(ex => exerciseName.includes(ex) || ex.includes(exerciseName))) {
+      results.push(muscle);
+    }
+  }
+  return results; // マッチしない場合は空配列（デフォルト胸は廃止）
+}
+
+// ── ストリーク＆PR更新 ──────────────────────────
+function renderStreak() {
+  const streak = calcStreak();
+  document.getElementById('streak-num').textContent = streak;
+  const totalDays = new Set(logs.map(e => e.date)).size;
+  const thisMonthDays = new Set(logs.filter(e => e.date.startsWith(monthStr())).map(e => e.date)).size;
+  document.getElementById('streak-sub').innerHTML =
+    `今月 <strong style="color:#ff4444">${thisMonthDays}日</strong> トレーニング<br>累計 ${totalDays}日`;
+  if (streak === 0) document.getElementById('streak-bar').style.borderColor = '#333';
+  else if (streak >= 7) document.getElementById('streak-bar').style.borderColor = '#ff8800';
+  else document.getElementById('streak-bar').style.borderColor = '#ff4444';
+}
+
+function renderPR() {
+  const byExercise = {};
+  for (const e of logs) {
+    if (!byExercise[e.exercise] || e.kg > byExercise[e.exercise].kg) {
+      byExercise[e.exercise] = { kg: e.kg, date: e.date };
+    }
+  }
+  const entries = Object.entries(byExercise).sort((a,b) => b[1].kg - a[1].kg);
+  const el = document.getElementById('pr-list');
+  if (!entries.length) { el.innerHTML = '<div class="empty">記録がありません</div>'; return; }
+  el.innerHTML = entries.map(([ex, d]) => `
+    <div class="pr-row">
+      <div>
+        <div class="pr-exercise">${ex}</div>
+        <div class="pr-date">${d.date}</div>
+      </div>
+      <div class="pr-kg">${d.kg} kg</div>
+    </div>`).join('');
+}
+
+// ── カレンダー ───────────────────────────────────
+let calYear  = new Date().getFullYear();
+let calMonth = new Date().getMonth(); // 0-indexed
+
+function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
+function calNext() { calMonth++; if (calMonth > 11) { calMonth = 0;  calYear++; } renderCalendar(); }
+
+function renderCalendar() {
+  const MONTH_JA = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+  const DOW = ['日','月','火','水','木','金','土'];
+  document.getElementById('cal-title').textContent = `${calYear}年 ${MONTH_JA[calMonth]}`;
+
+  // その月のトレーニング日を集計
+  const prefix = `${calYear}-${String(calMonth+1).padStart(2,'0')}`;
+  const strengthDays = {};
+  const cardioDays   = new Set();
+
+  for (const e of logs) {
+    if (e.date.startsWith(prefix)) {
+      const d = parseInt(e.date.slice(8));
+      strengthDays[d] = (strengthDays[d] || 0) + e.volume;
+    }
+  }
+  for (const e of cardioLogs) {
+    if (e.date.startsWith(prefix)) cardioDays.add(parseInt(e.date.slice(8)));
+  }
+
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+  const todayDate = new Date();
+  const isCurrentMonth = todayDate.getFullYear() === calYear && todayDate.getMonth() === calMonth;
+
+  // 曜日ヘッダー
+  let html = '<div class="cal-dow">' + DOW.map(d => `<span>${d}</span>`).join('') + '</div>';
+  html += '<div class="cal-days">';
+
+  for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const hasS = !!strengthDays[d];
+    const hasC = cardioDays.has(d);
+    const isToday = isCurrentMonth && d === todayDate.getDate();
+    let cls = 'cal-day';
+    if (hasS && hasC) cls += ' has-strength has-cardio has-both';
+    else if (hasS) cls += ' has-strength';
+    else if (hasC) cls += ' has-cardio';
+    if (isToday) cls += ' today';
+
+    // 部位アイコン（ミニ人体SVG）
+    let muscleIcon = '';
+    if (hasS || hasC) {
+      const date2 = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dayEx = logs.filter(e => e.date === date2).map(e => e.exercise);
+      const muscles = new Set(dayEx.flatMap(ex => getMuscles(ex)));
+      const c = (m) => muscles.has(m) ? '#ff4444' : '#2a2a2a';
+      const cC = hasC ? '#44cc44' : '#2a2a2a'; // 有酸素=脚を緑
+      const u = '#3a3a3a'; const s = '#666'; const sw = '0.8';
+      muscleIcon = `<svg width="20" height="30" viewBox="0 0 20 32" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="10" cy="3" r="2.5" fill="#555" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="5" y="6" width="10" height="7" rx="1.5" fill="${c('胸')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="6" y="13" width="8" height="5" rx="1" fill="${c('腹')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="1" y="7" width="3.5" height="6" rx="1" fill="${c('肩')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="15.5" y="7" width="3.5" height="6" rx="1" fill="${c('肩')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="0" y="13" width="3" height="5" rx="1" fill="${c('腕')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="17" y="13" width="3" height="5" rx="1" fill="${c('腕')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="5.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : c('脚')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="10.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : c('脚')}" stroke="${s}" stroke-width="${sw}"/>
+      </svg>`;
+    }
+
+    const tonStr = hasS ? `<span style="font-size:9px;color:#ff8888;line-height:1">${(strengthDays[d]/1000).toFixed(1)}t</span>` : '';
+    html += `<div class="${cls}" onclick="calClick(${d})"><span style="font-size:11px">${d}</span>${muscleIcon}${tonStr}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+  document.getElementById('cal-detail').textContent = '';
+  document.getElementById('body-svg-wrap').style.display = 'none';
+
+  // 今月なら今日を自動表示
+  if (isCurrentMonth) {
+    const td = todayDate.getDate();
+    if (strengthDays[td] || cardioDays.has(td)) setTimeout(() => calClick(td), 50);
+  }
+  html += '</div>';
+}
+
+function calClick(d) {
+  const date = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const dayLogs = logs.filter(e => e.date === date);
+  const dayCardio = cardioLogs.filter(e => e.date === date);
+  if (!dayLogs.length && !dayCardio.length) {
+    document.getElementById('cal-detail').textContent = 'この日の記録はなし';
+    document.getElementById('body-svg-wrap').style.display = 'none';
+    return;
+  }
+  const lines = [];
+  if (dayLogs.length) {
+    const vol = dayLogs.reduce((s,e) => s+e.volume, 0);
+    lines.push(`筋トレ: ${dayLogs.map(e => `${e.exercise} ${e.kg}kg×${e.reps}回`).join(' / ')} (計${vol.toLocaleString()}kg)`);
+  }
+  if (dayCardio.length) {
+    lines.push(`有酸素: ${dayCardio.map(e => `${e.exercise || 'エアロバイク'} 負荷${e.load}×${e.min}分`).join(' / ')}`);
+  }
+  document.getElementById('cal-detail').textContent = lines.join(' | ');
+
+  // 部位図を更新
+  const worked = new Set(dayLogs.flatMap(e => getMuscles(e.exercise)));
+  const hasCardio = dayCardio.length > 0;
+  const svgMap = { 胸: ['svg-chest','svg-back'], 脚: ['svg-legs','svg-legs2'], 肩: ['svg-shoulders','svg-shoulders2'], 腕: ['svg-arms','svg-arms2'], 腹: ['svg-abs'], 背中: ['svg-back'] };
+  // 全部リセット
+  Object.values(svgMap).flat().forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('muscle-active','muscle-cardio'); el.style.fill=''; }
+  });
+  // 筋トレ部位を光らせる
+  for (const muscle of worked) {
+    (svgMap[muscle] || []).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('muscle-active');
+    });
+  }
+  // 有酸素は脚を緑に
+  if (hasCardio) {
+    ['svg-legs','svg-legs2'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.classList.remove('muscle-active'); el.classList.add('muscle-cardio'); }
+    });
+  }
+  document.getElementById('body-svg-wrap').style.display = 'flex';
+}
+
+// ── 起動 ────────────────────────────────────────
+GH_TOKEN   = localStorage.getItem('gh_token')   || '';
+GEMINI_KEY = localStorage.getItem('gemini_key') || '';
+if (GH_TOKEN && GEMINI_KEY) {
+  showMain();
+} else {
+  document.getElementById('setup-screen').style.display = 'block';
+}
+</script>
+</body>
+</html>
