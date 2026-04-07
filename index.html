@@ -1389,13 +1389,20 @@ function renderFatigue() {
     return `${days}日前`;
   }
 
-  // SVGボディの色を更新
+  // SVGボディの色を更新（複数筋肉が同じ部位を共有する場合は最も疲労度が高い色を優先）
+  const colorPriority = c => c === '#ff4444' ? 3 : c === '#ff8800' ? 2 : c === '#44cc44' ? 1 : 0;
+  const svgColors = {};
   for (const muscle of MUSCLES) {
     const color = fatigueColor(lastDays[muscle]);
     for (const id of (SVG_IDS[muscle] || [])) {
-      const el = document.getElementById(id);
-      if (el) el.setAttribute('fill', color);
+      if (!svgColors[id] || colorPriority(color) > colorPriority(svgColors[id])) {
+        svgColors[id] = color;
+      }
     }
+  }
+  for (const [id, color] of Object.entries(svgColors)) {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('fill', color);
   }
 
   // 凡例リスト
