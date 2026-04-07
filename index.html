@@ -240,11 +240,9 @@
     .log-cardio { color: #44cc44; font-weight: 700; font-size: 14px; }
 
     /* 体重グラフ */
-    .weight-graph { display: flex; align-items: flex-end; gap: 4px; height: 60px; margin-top: 12px; }
-    .weight-bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .weight-bar { width: 100%; background: #ff4444; border-radius: 3px 3px 0 0; min-height: 2px; }
-    .weight-bar-label { font-size: 9px; color: #666; }
-    .weight-bar-val { font-size: 9px; color: #ff8888; }
+    .weight-graph { margin-top: 4px; overflow-x: auto; }
+    .weight-today-log { margin-top: 8px; border-top: 1px solid #222; padding-top: 6px; display: none; }
+    .weight-log-row { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; font-size: 13px; color: #666; }
 
     /* 設定画面 */
     .setup-desc { color: #666; font-size: 13px; margin-bottom: 12px; line-height: 1.6; }
@@ -333,6 +331,7 @@
         <button class="primary" onclick="saveWeight()" style="width:auto;padding:10px 18px;margin-top:0">記録</button>
       </div>
       <div id="weight-today" style="font-size:13px;color:#666;margin-top:6px"></div>
+      <div class="weight-today-log" id="weight-today-log"></div>
       <div class="weight-graph" id="weight-graph"></div>
     </div>
     <div class="card">
@@ -827,17 +826,27 @@ async function saveWeight() {
   const val = parseFloat(document.getElementById('weight-input').value);
   if (!val || val < 30 || val > 200) { alert('体重を入力してください'); return; }
 
-  // 今日分は上書き
-  const existing = weightLogs.findIndex(e => e.date === today());
-  const entry = { date: today(), kg: val };
-  if (existing >= 0) weightLogs[existing] = entry;
-  else weightLogs.push(entry);
-  weightLogs.sort((a,b) => a.date.localeCompare(b.date));
+  const entry = { date: today(), ts: Date.now(), kg: val };
+  weightLogs.push(entry);
+  weightLogs.sort((a,b) => a.date.localeCompare(b.date) || (a.ts||0)-(b.ts||0));
 
   renderWeight();
-  document.getElementById('weight-input').value = '';
+  document.getElementById('status').textContent = '保存中...';
+  await flushWeightLogs();
+  document.getElementById('status').textContent = '体重保存完了 ✓';
+}
 
-  // 保存
+async function deleteWeight(ts) {
+  if (!confirm('この記録を削除しますか？')) return;
+  const idx = weightLogs.findIndex(e => e.ts === ts);
+  if (idx < 0) return;
+  weightLogs.splice(idx, 1);
+  renderWeight();
+  await flushWeightLogs();
+  document.getElementById('status').textContent = '削除完了 ✓';
+}
+
+async function flushWeightLogs() {
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(weightLogs, null, 2))));
   const body = { message: `weight ${today()}`, content, ...(weightFileSha ? { sha: weightFileSha } : {}) };
   const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
@@ -850,7 +859,7 @@ async function saveWeight() {
       headers: { Authorization: `token ${GH_TOKEN}` }
     });
     if (fresh.ok) { const d = await fresh.json(); weightFileSha = d.sha; }
-    return saveWeight();
+    return flushWeightLogs();
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -859,37 +868,101 @@ async function saveWeight() {
 
 function renderWeight() {
   const t = today();
-  const todayW = weightLogs.find(e => e.date === t);
-  const lastW = weightLogs.length ? weightLogs[weightLogs.length - 1] : null;
 
-  // 今日未記録なら前回値を入力欄にプリセット
-  if (!todayW && lastW) {
-    const inp = document.getElementById('weight-input');
-    if (!inp.value) inp.value = lastW.kg;
+  // 1日ごとに最後のエントリを採用
+  const byDate = {};
+  for (const e of weightLogs) {
+    if (!byDate[e.date] || (e.ts || 0) > (byDate[e.date].ts || 0)) byDate[e.date] = e;
   }
 
-  document.getElementById('weight-today').textContent =
-    todayW ? `今日: ${todayW.kg} kg` :
-    lastW  ? `前回 (${lastW.date}): ${lastW.kg} kg — 今日はまだ未記録` :
-    '今日はまだ未記録';
+  const todayEntries = weightLogs.filter(e => e.date === t).sort((a,b) => (b.ts||0)-(a.ts||0));
+  const latestToday  = todayEntries[0] || null;
+  const prevDates    = Object.keys(byDate).filter(d => d !== t).sort();
+  const lastW        = prevDates.length ? byDate[prevDates[prevDates.length-1]] : null;
 
-  // 直近14件のグラフ
-  const recent = weightLogs.slice(-14);
-  if (recent.length < 2) { document.getElementById('weight-graph').innerHTML = ''; return; }
-  const vals = recent.map(e => e.kg);
-  const min = Math.min(...vals) - 1;
-  const max = Math.max(...vals) + 1;
-  const range = max - min || 1;
+  // 入力欄プリセット
+  const inp = document.getElementById('weight-input');
+  if (!inp.value) inp.value = latestToday ? latestToday.kg : (lastW ? lastW.kg : '');
 
-  document.getElementById('weight-graph').innerHTML = recent.map(e => {
-    const h = Math.round(((e.kg - min) / range) * 52) + 4;
-    const dateLabel = e.date.slice(5).replace('-', '/');
-    return `<div class="weight-bar-wrap">
-      <div class="weight-bar-val">${e.kg}</div>
-      <div class="weight-bar" style="height:${h}px"></div>
-      <div class="weight-bar-label">${dateLabel}</div>
-    </div>`;
+  // 今日の状態表示
+  const todayEl = document.getElementById('weight-today');
+  if (latestToday) {
+    const diff = lastW ? (latestToday.kg - lastW.kg).toFixed(1) : null;
+    const diffStr = diff !== null ? `（前回比 ${diff > 0 ? '+' : ''}${diff}kg）` : '';
+    todayEl.innerHTML = `今日: <strong style="color:#ff4444">${latestToday.kg} kg</strong> ${diffStr}`;
+  } else if (lastW) {
+    todayEl.textContent = `前回 (${lastW.date}): ${lastW.kg} kg — 今日はまだ未記録`;
+  } else {
+    todayEl.textContent = '今日はまだ未記録';
+  }
+
+  // 今日複数記録があれば一覧表示
+  const logEl = document.getElementById('weight-today-log');
+  if (todayEntries.length > 1) {
+    logEl.style.display = 'block';
+    logEl.innerHTML = todayEntries.map((e, i) => {
+      const time = e.ts ? new Date(e.ts).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'}) : '';
+      const adopted = i === 0;
+      return `<div class="weight-log-row">
+        <span>${time}</span>
+        <span style="color:${adopted ? '#ff4444' : '#555'};font-weight:${adopted ? '700' : '400'}">${e.kg} kg${adopted ? ' ✓採用' : ''}</span>
+        <button onclick="deleteWeight(${e.ts})" class="del-btn">×</button>
+      </div>`;
+    }).join('');
+  } else {
+    logEl.style.display = 'none';
+    logEl.innerHTML = '';
+  }
+
+  // グラフ：1日1値（最新）で直近30日
+  const points = Object.entries(byDate)
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .slice(-30)
+    .map(([date, e]) => ({ date, kg: e.kg }));
+
+  renderWeightGraph(points);
+}
+
+function renderWeightGraph(points) {
+  const wrap = document.getElementById('weight-graph');
+  if (points.length < 2) { wrap.innerHTML = ''; return; }
+
+  const vals  = points.map(p => p.kg);
+  const minV  = Math.min(...vals);
+  const maxV  = Math.max(...vals);
+  const range = maxV - minV || 0.1;
+
+  const PW = 38, GAP = 2;
+  const PAD_L = 34, PAD_R = 10, PAD_T = 18, PAD_B = 22;
+  const graphH = 80;
+  const W = PAD_L + points.length * (PW + GAP) - GAP + PAD_R;
+  const H = graphH + PAD_T + PAD_B;
+
+  const cx = i  => PAD_L + i * (PW + GAP) + PW / 2;
+  const cy = kg => PAD_T + graphH - ((kg - minV) / range) * graphH;
+
+  const polyline = points.map((p, i) => `${cx(i)},${cy(p.kg)}`).join(' ');
+
+  const dots = points.map((p, i) => {
+    const prev  = i > 0 ? points[i-1].kg : p.kg;
+    const color = p.kg < prev ? '#44cc44' : p.kg > prev ? '#ff4444' : '#888';
+    const isToday = p.date === today();
+    const r = isToday ? 5.5 : 3.5;
+    const label = p.date.slice(5).replace('-', '/');
+    const showKg = i === 0 || i === points.length - 1 || isToday;
+    return `
+      <circle cx="${cx(i)}" cy="${cy(p.kg)}" r="${r}" fill="${isToday ? '#ff4444' : color}" ${isToday ? 'stroke="#fff" stroke-width="1.5"' : ''}/>
+      ${showKg ? `<text x="${cx(i)}" y="${cy(p.kg) - 8}" text-anchor="middle" font-size="9" fill="${isToday ? '#ff8888' : '#777'}">${p.kg}</text>` : ''}
+      <text x="${cx(i)}" y="${H - 4}" text-anchor="middle" font-size="8" fill="${isToday ? '#aaa' : '#444'}">${label}</text>`;
   }).join('');
+
+  wrap.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="overflow:visible">
+    <text x="${PAD_L - 5}" y="${PAD_T + 3}" text-anchor="end" font-size="9" fill="#555">${maxV}</text>
+    <text x="${PAD_L - 5}" y="${PAD_T + graphH}" text-anchor="end" font-size="9" fill="#555">${minV}</text>
+    <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${PAD_T + graphH}" stroke="#333" stroke-width="0.5"/>
+    <polyline points="${polyline}" fill="none" stroke="#553333" stroke-width="1.5" stroke-linejoin="round"/>
+    ${dots}
+  </svg>`;
 }
 
 // ── プルダウン管理 ───────────────────────────────
