@@ -282,9 +282,9 @@
     <div class="input-row" style="margin-bottom:12px">
       <input type="password" id="setup-gh-token" placeholder="ghp_xxxxxxxx">
     </div>
-    <p class="setup-label">Google Gemini API Key</p>
+    <p class="setup-label">Groq API Key</p>
     <div class="input-row">
-      <input type="password" id="setup-gemini-key" placeholder="AIzaSy...">
+      <input type="password" id="setup-gemini-key" placeholder="gsk_...">
     </div>
     <p class="setup-desc" style="color:#ff8800;font-size:12px;margin-top:10px;margin-bottom:0">⚠ トークンはブラウザに保存されます。Fine-grainedトークンを使い、スコープを「Contents: Read and write」のみに絞ることを強く推奨します。</p>
     <button class="primary" onclick="saveSetup()">設定して始める</button>
@@ -770,19 +770,7 @@ ${isPRLoad ? `★★★ 負荷の自己ベスト更新！（過去最高 ${maxLo
 - 絵文字は使わない`;
 
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 200, temperature: 0.9 }
-        })
-      }
-    );
-    const data = await res.json();
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '記録完了！心肺も鍛えろ！';
+    return await callGroq(prompt, 200, 0.9);
   } catch(e) {
     return '記録完了！積み上げてるぞ！';
   }
@@ -1119,25 +1107,28 @@ ${benchmarkText}
 口調：「だ・である」調、テンション高め。`;
 }
 
+async function callGroq(prompt, maxTokens = 320, temperature = 0.9) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GEMINI_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      temperature
+    })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error.message || JSON.stringify(data.error));
+  return data.choices?.[0]?.message?.content || '';
+}
+
 async function getCheer(entry) {
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildPrompt(entry) }] }],
-          generationConfig: { maxOutputTokens: 320, temperature: 0.9 }
-        })
-      }
-    );
-    const data = await res.json();
-    if (data.error) return `APIエラー: ${data.error.code} ${data.error.message?.slice(0,80)}`;
-    if (data.promptFeedback?.blockReason) return `ブロック: ${data.promptFeedback.blockReason}`;
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) return `レスポンス異常: ${JSON.stringify(data).slice(0,120)}`;
-    return text;
+    return await callGroq(buildPrompt(entry), 320, 0.9);
   } catch(e) {
     return `通信エラー: ${e.message}`;
   }
@@ -1478,20 +1469,7 @@ ${question}
 
 async function askGemini(question) {
   try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: buildChatPrompt(question) }] }],
-          generationConfig: { maxOutputTokens: 800, temperature: 0.85 }
-        })
-      }
-    );
-    const data = await res.json();
-    if (data.error) return `APIエラー ${data.error.code}: ${data.error.message.slice(0,100)}`;
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || `不明なレスポンス: ${JSON.stringify(data).slice(0,100)}`;
+    return await callGroq(buildChatPrompt(question), 800, 0.85);
   } catch(e) {
     return 'ネットワークエラー: ' + e.message;
   }
