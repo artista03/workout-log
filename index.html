@@ -1892,16 +1892,17 @@ function renderCalendar() {
       const c = (m) => muscles.has(m) ? '#ff4444' : '#2a2a2a';
       const cC = hasC ? '#44cc44' : '#2a2a2a'; // 有酸素=脚を緑
       const u = '#3a3a3a'; const s = '#666'; const sw = '0.8';
+      const cm = (list) => list.some(m => muscles.has(m)) ? '#ff4444' : u;
       muscleIcon = `<svg width="20" height="30" viewBox="0 0 20 32" xmlns="http://www.w3.org/2000/svg">
         <circle cx="10" cy="3" r="2.5" fill="#555" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="5" y="6" width="10" height="7" rx="1.5" fill="${c('胸')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="6" y="13" width="8" height="5" rx="1" fill="${c('腹')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="1" y="7" width="3.5" height="6" rx="1" fill="${c('肩')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="15.5" y="7" width="3.5" height="6" rx="1" fill="${c('肩')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="0" y="13" width="3" height="5" rx="1" fill="${c('腕')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="17" y="13" width="3" height="5" rx="1" fill="${c('腕')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="5.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : c('脚')}" stroke="${s}" stroke-width="${sw}"/>
-        <rect x="10.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : c('脚')}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="5" y="6" width="10" height="7" rx="1.5" fill="${cm(['大胸筋'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="6" y="13" width="8" height="5" rx="1" fill="${cm(['腹直筋','腹斜筋','腸腰筋'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="1" y="7" width="3.5" height="6" rx="1" fill="${cm(['三角筋前部','三角筋中部','三角筋後部'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="15.5" y="7" width="3.5" height="6" rx="1" fill="${cm(['三角筋前部','三角筋中部','三角筋後部'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="0" y="13" width="3" height="5" rx="1" fill="${cm(['上腕二頭筋','上腕三頭筋','前腕屈筋群','前腕伸筋群'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="17" y="13" width="3" height="5" rx="1" fill="${cm(['上腕二頭筋','上腕三頭筋','前腕屈筋群','前腕伸筋群'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="5.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : cm(['大腿四頭筋','ハムストリングス','大臀筋','中臀筋','下腿三頭筋'])}" stroke="${s}" stroke-width="${sw}"/>
+        <rect x="10.5" y="18" width="4" height="8" rx="1" fill="${hasC ? cC : cm(['大腿四頭筋','ハムストリングス','大臀筋','中臀筋','下腿三頭筋'])}" stroke="${s}" stroke-width="${sw}"/>
       </svg>`;
     }
 
@@ -1942,9 +1943,30 @@ function calClick(d) {
   // 部位図を更新
   const worked = new Set(dayLogs.flatMap(e => getMuscles(e.exercise)));
   const hasCardio = dayCardio.length > 0;
-  const svgMap = { 胸: ['svg-chest','svg-back'], 脚: ['svg-legs','svg-legs2'], 肩: ['svg-shoulders','svg-shoulders2'], 腕: ['svg-arms','svg-arms2'], 腹: ['svg-abs'], 背中: ['svg-back'] };
+  const svgMap = {
+    大胸筋:     ['svg-chest'],
+    広背筋:     ['svg-back'],
+    僧帽筋:     ['svg-back'],
+    菱形筋:     ['svg-back'],
+    脊柱起立筋: ['svg-back'],
+    三角筋前部: ['svg-shoulders','svg-shoulders2'],
+    三角筋中部: ['svg-shoulders','svg-shoulders2'],
+    三角筋後部: ['svg-shoulders','svg-shoulders2'],
+    上腕二頭筋: ['svg-arms','svg-arms2'],
+    上腕三頭筋: ['svg-arms','svg-arms2'],
+    大腿四頭筋: ['svg-legs','svg-legs2'],
+    ハムストリングス: ['svg-legs','svg-legs2'],
+    下腿三頭筋: ['svg-legs','svg-legs2'],
+    大臀筋:     ['svg-legs','svg-legs2'],
+    中臀筋:     ['svg-legs','svg-legs2'],
+    腹直筋:     ['svg-abs'],
+    腹斜筋:     ['svg-abs'],
+    腸腰筋:     ['svg-abs'],
+    前腕屈筋群: ['svg-arms','svg-arms2'],
+    前腕伸筋群: ['svg-arms','svg-arms2'],
+  };
   // 全部リセット
-  Object.values(svgMap).flat().forEach(id => {
+  ['svg-chest','svg-back','svg-abs','svg-arms','svg-arms2','svg-legs','svg-legs2','svg-shoulders','svg-shoulders2'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.classList.remove('muscle-active','muscle-cardio'); el.style.fill=''; }
   });
