@@ -75,6 +75,7 @@
     .log-name { font-weight: 600; }
     .log-detail { color: #777; font-size: 13px; margin-top: 2px; }
     .log-muscle { color: #555; font-size: 11px; margin-top: 2px; letter-spacing: 0.3px; }
+    .log-summary { margin-top: 6px; padding: 5px 8px; background: #222; border-radius: 6px; font-size: 11px; color: #aaa; display: flex; gap: 10px; }
     .log-vol { color: #ff4444; font-weight: 700; font-size: 14px; }
     .empty { color: #444; text-align: center; padding: 20px 0; font-size: 14px; }
     .status { font-size: 12px; color: #555; text-align: center; margin-top: 12px; }
@@ -1457,6 +1458,10 @@ function renderAll() {
   if (todayLogs.length === 0) {
     ul.innerHTML = '<li class="empty">まだ記録がありません</li>';
   } else {
+    // 種目ごとの最後のエントリのインデックスを特定
+    const lastIdxOf = {};
+    todayLogs.forEach((e, i) => { lastIdxOf[e.exercise] = i; });
+
     ul.innerHTML = todayLogs.map((e, i) => {
       const exAll = logs.filter(l => l.exercise === e.exercise);
       const maxKg = Math.max(...exAll.map(l => l.kg));
@@ -1472,6 +1477,21 @@ function renderAll() {
       } else if (i === 0 && e.ts) {
         intervalStr = 'スタート';
       }
+      // 種目の最後のエントリなら集計を表示
+      let summaryHtml = '';
+      if (lastIdxOf[e.exercise] === i) {
+        const sameEx = todayLogs.filter(l => l.exercise === e.exercise);
+        if (sameEx.length > 1) {
+          const totalSets   = sameEx.reduce((s, l) => s + l.sets, 0);
+          const totalReps   = sameEx.reduce((s, l) => s + l.reps * l.sets, 0);
+          const totalVol    = sameEx.reduce((s, l) => s + l.volume, 0);
+          summaryHtml = `<div class="log-summary">
+            <span>計 ${totalSets}セット</span>
+            <span>${totalReps}回</span>
+            <span>${totalVol.toLocaleString()}kg</span>
+          </div>`;
+        }
+      }
       return `
         <li class="log-item">
           <div style="flex:1">
@@ -1479,6 +1499,7 @@ function renderAll() {
             <div class="log-detail">${e.kg}kg × ${e.reps}回 × ${e.sets}セット</div>
             ${getMuscles(e.exercise).length ? `<div class="log-muscle">📍 ${getMuscles(e.exercise).join(' · ')}</div>` : ''}
             ${timeStr ? `<div style="font-size:11px;color:#555;margin-top:3px">${timeStr}${intervalStr ? ' · ' + intervalStr : ''}</div>` : ''}
+            ${summaryHtml}
           </div>
           <div style="display:flex;align-items:center;gap:4px">
             <div class="log-vol">${e.volume.toLocaleString()}kg</div>
