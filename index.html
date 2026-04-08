@@ -1609,21 +1609,44 @@ function buildChatPrompt(question) {
   const monthCardioMin = cardioLogs.filter(e => e.date.slice(0,7) === m).reduce((s,e) => s+e.min, 0);
   const last5Cardio = [...cardioLogs].slice(-5).map(e => `${e.date} 負荷${e.load}×${e.min}分`).join(' / ');
 
-  return `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
+  // 今日のログを別途抽出
+  const todayEntries = logs.filter(e => e.date === today());
+  const todayVol = todayEntries.reduce((s,e) => s+e.volume, 0);
+  const todayCardio = cardioLogs.filter(e => e.date === today());
+  const todaySummary = todayEntries.length
+    ? todayEntries.map(e => `${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット（${e.volume.toLocaleString()}kg）`).join('\n')
+    : 'なし';
+
+  // 先週同日・先月平均ボリュームと比較
+  const lastWeekSameDay = (() => {
+    const d = new Date(today()); d.setDate(d.getDate()-7);
+    const ds = d.toISOString().slice(0,10);
+    return logs.filter(e => e.date === ds).reduce((s,e) => s+e.volume, 0);
+  })();
+  const avgDailyVol = totalDays > 0 ? Math.round(logs.reduce((s,e)=>s+e.volume,0) / totalDays) : 0;
+
+  return `あなたは今井陽介専属の鬼パーソナルトレーナーだ。データを深く読み込んで、数字に基づいた鋭いコメントを出せ。
 
 ${buildProfileContext()}
 
-【全トレーニングデータ】
-総トレーニング日数: ${totalDays}日
-連続記録中: ${streak}日
-今週のボリューム: ${weekVol.toLocaleString()}kg
-今月のボリューム: ${monthVol.toLocaleString()}kg
+【今日（${today()}）のトレーニング】
+${todaySummary}
+今日の合計ボリューム: ${todayVol.toLocaleString()}kg
+有酸素: ${todayCardio.length ? todayCardio.map(e=>`${e.exercise||'エアロバイク'} 負荷${e.load}×${e.min}分`).join(', ') : 'なし'}
 
-【種目別サマリー】
+【比較データ】
+今日のボリューム: ${todayVol.toLocaleString()}kg
+1週間前同日のボリューム: ${lastWeekSameDay.toLocaleString()}kg
+1日あたり平均ボリューム: ${avgDailyVol.toLocaleString()}kg
+今週の累計: ${weekVol.toLocaleString()}kg
+今月の累計: ${monthVol.toLocaleString()}kg
+連続トレーニング: ${streak}日 / 総トレーニング日数: ${totalDays}日
+
+【種目別サマリー（全期間）】
 ${summaries || 'まだデータなし'}
 
-【筋トレ生データ（直近20件）】
-${logs.slice(-20).map(e => `${e.date} ${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット`).join('\n')}
+【直近の筋トレ記録（10件）】
+${logs.slice(-10).map(e => `${e.date} ${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット`).join('\n')}
 
 【有酸素データ】
 今週: ${weekCardioMin}分 / 今月: ${monthCardioMin}分
@@ -1633,17 +1656,22 @@ ${logs.slice(-20).map(e => `${e.date} ${e.exercise} ${e.kg}kg×${e.reps}回×${e
 ${question}
 
 上記データをもとに、今井陽介本人に語りかけるように回答しろ。
-ルール：
-- ユーザーが「表で」「箇条書きで」「一覧で」「ならべて」など形式を指定したら必ずその形式で答えろ
-- 形式指定がない場合は普通の文章で答えろ（マークダウン記法は不要）
-- データに基づいて具体的に
-- 口調は「だ・である」調でテンション高め
-- 絵文字は使わない`;
+回答の基準：
+- 必ず具体的な数字を使って話せ（「ボリューム多いな」ではなく「先週比+23%だ」）
+- 45歳男性として平均・上位比較を積極的に入れろ（45歳男性の平均ベンチ体重比0.8倍など）
+- 今日のデータに対しては「良かった点」「改善点」「次回への提言」を必ず含めろ
+- PRに近い記録があれば必ず言及しろ
+- 筋肉バランス（どこを鍛えすぎ・サボりすぎか）にも触れろ
+- ユーザーが「表で」「箇条書きで」など形式を指定したら必ずその形式で
+- 形式指定がない場合は普通の文章
+- 口調は「だ・である」調でテンション高め・歯切れよく
+- 絵文字は使わない
+- 長すぎず400字以内でまとめろ`;
 }
 
 async function askGemini(question) {
   try {
-    return await callGroq(buildChatPrompt(question), 800, 0.85);
+    return await callGroq(buildChatPrompt(question), 1200, 0.85);
   } catch(e) {
     return 'ネットワークエラー: ' + e.message;
   }
