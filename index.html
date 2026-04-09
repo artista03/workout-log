@@ -2159,6 +2159,12 @@ if (GH_TOKEN && GEMINI_KEY) {
 } else {
   document.getElementById('setup-screen').style.display = 'block';
 }
+
+// ── 日付変わったら自動リロード ────────────────────
+const _loadedDate = today();
+setInterval(() => {
+  if (today() !== _loadedDate) location.reload();
+}, 60000);
 </script>
 </body>
 </html>
