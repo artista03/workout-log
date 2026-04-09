@@ -385,6 +385,8 @@
 
     <div class="card">
       <h2>今日のログ</h2>
+      <!-- 今日鍛えた部位サマリー -->
+      <div id="today-muscles-content" style="margin-bottom:12px"></div>
       <ul class="log-list" id="today-log">
         <li class="empty">まだ記録がありません</li>
       </ul>
@@ -549,7 +551,8 @@
       </div>
     </div>
     <div style="display:flex;gap:12px;margin-top:10px;font-size:11px;color:#666">
-      <span><span style="color:#ff4444">■</span> 要休養（0〜1日）</span>
+      <span><span style="color:#ff4444">■</span> 今日</span>
+      <span><span style="color:#ff7722">■</span> 昨日</span>
       <span><span style="color:#ff8800">■</span> 回復中（2〜3日）</span>
       <span><span style="color:#44cc44">■</span> 準備OK（4日+）</span>
     </div>
@@ -598,19 +601,20 @@ let cardioLogs    = [];
 let fileSha       = null;
 let cardioFileSha = null;
 
-// ── 日付ユーティリティ ───────────────────────────
-function today() { return nowJST().toISOString().slice(0, 10); }
-function nowJST() {
-  const d = new Date();
-  d.setTime(d.getTime() + 9 * 60 * 60 * 1000);
-  return d;
+// ── 日付ユーティリティ（JST固定） ────────────────
+function today() {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
 }
+function monthStr() { return today().slice(0, 7); }
 function weekStart() {
-  const d = nowJST();
-  d.setDate(d.getDate() - d.getDay());
-  return d.toISOString().slice(0, 10);
+  const t = today();
+  const [y, m, d] = t.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(d - dt.getDay());
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
 }
-function monthStr() { return nowJST().toISOString().slice(0, 7); }
+// 後方互換（呼び出し元があれば使う）
+function nowJST() { return new Date(); }
 
 // ── 設定 ────────────────────────────────────────
 function saveSetup() {
@@ -1292,15 +1296,17 @@ function renderVolumeGraph() {
   const wrap = document.getElementById('vol-graph-wrap');
   if (!wrap) return;
 
-  // 過去8週分の週開始日を計算
+  // 過去8週分の週開始日を計算（JST基準）
   const weeks = [];
-  const base = new Date();
-  base.setDate(base.getDate() - base.getDay()); // 今週の日曜
+  const ws = weekStart();
+  const [wy, wm, wd] = ws.split('-').map(Number);
+  const baseDate = new Date(wy, wm - 1, wd);
   for (let i = 7; i >= 0; i--) {
-    const d = new Date(base);
-    d.setDate(d.getDate() - i * 7);
-    const start = d.toISOString().slice(0, 10);
-    const end = new Date(d.getTime() + 6 * 86400000).toISOString().slice(0, 10);
+    const d = new Date(baseDate.getTime() - i * 7 * 86400000);
+    const pad = n => String(n).padStart(2, '0');
+    const start = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const end_d = new Date(d.getTime() + 6 * 86400000);
+    const end = `${end_d.getFullYear()}-${pad(end_d.getMonth()+1)}-${pad(end_d.getDate())}`;
     const label = `${d.getMonth()+1}/${d.getDate()}`;
     const vol = logs.filter(e => e.date >= start && e.date <= end).reduce((s, e) => s + e.volume, 0);
     weeks.push({ label, vol });
@@ -1383,9 +1389,10 @@ function renderFatigue() {
   // 色分けロジック
   function fatigueColor(days) {
     if (days === null) return '#3a3a3a';        // 未トレ
-    if (days <= 1)    return '#ff4444';         // 要休養
-    if (days <= 3)    return '#ff8800';         // 回復中
-    return '#44cc44';                           // 準備OK
+    if (days === 0)    return '#ff4444';         // 今日（要休養）
+    if (days === 1)    return '#ff7722';         // 昨日（まだ回復中）
+    if (days <= 3)    return '#ff8800';         // 2〜3日前（回復中）
+    return '#44cc44';                           // 4日以上（準備OK）
   }
   function fatigueLabel(days) {
     if (days === null) return '未トレ';
@@ -1417,7 +1424,7 @@ function renderFatigue() {
     const days = lastDays[muscle];
     const color = fatigueColor(days);
     const label = fatigueLabel(days);
-    const status = days === null ? '未トレ' : days <= 1 ? '要休養' : days <= 3 ? '回復中' : '準備OK';
+    const status = days === null ? '未トレ' : days === 0 ? '要休養' : days === 1 ? '昨日・回復中' : days <= 3 ? '回復中' : '準備OK';
     return `<div class="fatigue-item" onclick="toggleFatigueMenu(this,'${muscle}')">
       <div class="fatigue-dot" style="background:${color}"></div>
       <span class="fatigue-muscle">${muscle}</span>
@@ -1443,6 +1450,64 @@ function toggleFatigueMenu(el, muscle) {
   arrow.textContent = '▴';
 }
 
+// ── 今日鍛えた部位 ───────────────────────────────
+function renderTodayMuscles() {
+  const t = today();
+  const el = document.getElementById('today-muscles-content');
+  if (!el) return;
+
+  const todayExercises = [...new Set(logs.filter(e => e.date === t).map(e => e.exercise))];
+
+  if (todayExercises.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+
+  // 今日トレした筋肉をまとめる
+  const todayMuscles = new Set();
+  const exMuscleMap = {};
+  for (const ex of todayExercises) {
+    const muscles = getMuscles(ex);
+    exMuscleMap[ex] = muscles;
+    muscles.forEach(m => todayMuscles.add(m));
+  }
+
+  // グループ別に集計
+  const muscleGroups = {
+    '胸': ['大胸筋'],
+    '背中': ['広背筋', '僧帽筋', '菱形筋', '脊柱起立筋'],
+    '肩': ['三角筋前部', '三角筋中部', '三角筋後部'],
+    '腕': ['上腕二頭筋', '上腕三頭筋'],
+    '脚': ['大腿四頭筋', 'ハムストリングス', '下腿三頭筋'],
+    '臀部': ['大臀筋', '中臀筋'],
+    '腹': ['腹直筋', '腹斜筋', '腸腰筋'],
+    '前腕': ['前腕屈筋群', '前腕伸筋群'],
+  };
+
+  const chips = Object.entries(muscleGroups)
+    .filter(([, muscles]) => muscles.some(m => todayMuscles.has(m)))
+    .map(([group, muscles]) => {
+      const parts = muscles.filter(m => todayMuscles.has(m)).join(' · ');
+      return `<div style="background:#3a0000;border:1px solid #ff4444;border-radius:10px;padding:7px 14px;display:inline-flex;align-items:center;gap:6px">
+        <span style="color:#ff4444;font-weight:800;font-size:15px">${group}</span>
+        <span style="color:#888;font-size:11px">${parts}</span>
+      </div>`;
+    }).join('');
+
+  // 種目→部位の一覧
+  const exRows = todayExercises.map(ex => {
+    const ms = exMuscleMap[ex];
+    return `<div style="display:flex;align-items:baseline;gap:6px;padding:3px 0;border-bottom:1px solid #1a1a1a">
+      <span style="color:#ccc;font-size:13px;flex:1">${ex}</span>
+      <span style="color:#555;font-size:11px">${ms.length ? ms.join(' · ') : '—'}</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">${chips}</div>
+    <div style="margin-top:4px">${exRows}</div>`;
+}
+
 function renderAll() {
   const t = today(), w = weekStart(), m = monthStr();
   document.getElementById('daily-total').textContent   = calcTotal(e => e.date === t).toLocaleString();
@@ -1452,6 +1517,7 @@ function renderAll() {
   renderPR();
   renderVolumeGraph();
   renderFatigue();
+  renderTodayMuscles();
 
   const todayLogs = logs.filter(e => e.date === t).slice().sort((a,b) => (a.ts||0)-(b.ts||0));
   const ul = document.getElementById('today-log');
@@ -1907,8 +1973,9 @@ function renderPR() {
 }
 
 // ── カレンダー ───────────────────────────────────
-let calYear  = new Date().getFullYear();
-let calMonth = new Date().getMonth(); // 0-indexed
+const _todayJST = today().split('-').map(Number);
+let calYear  = _todayJST[0];
+let calMonth = _todayJST[1] - 1; // 0-indexed
 
 function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
 function calNext() { calMonth++; if (calMonth > 11) { calMonth = 0;  calYear++; } renderCalendar(); }
