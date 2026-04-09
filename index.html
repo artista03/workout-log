@@ -494,6 +494,7 @@
   <!-- 筋肉疲労チェッカー -->
   <div class="card">
     <h2>筋肉疲労チェッカー</h2>
+    <div id="today-recommend" style="margin-bottom:12px"></div>
     <div class="fatigue-grid">
       <div class="fatigue-legend" id="fatigue-legend">
         <div class="empty">記録を追加すると表示されます</div>
@@ -1066,8 +1067,12 @@ async function addLog() {
 
   // 記録トースト表示
   const exAllForPR = logs.filter(l => l.exercise === entry.exercise);
-  const maxKgForPR = exAllForPR.length > 1 ? Math.max(...exAllForPR.slice(0,-1).map(l => l.kg)) : 0;
-  showRecordToast(entry, maxKgForPR > 0 && entry.kg > maxKgForPR);
+  const prevLogs   = exAllForPR.slice(0, -1);
+  const maxKgForPR = prevLogs.length ? Math.max(...prevLogs.map(l => l.kg)) : 0;
+  const maxRmForPR = prevLogs.length ? Math.max(...prevLogs.map(l => Math.round(l.kg * (1 + l.reps / 30)))) : 0;
+  const current1rm = Math.round(entry.kg * (1 + entry.reps / 30));
+  const isPR = (maxKgForPR > 0 && entry.kg > maxKgForPR) || (maxRmForPR > 0 && current1rm > maxRmForPR);
+  showRecordToast(entry, isPR);
 
   // チアアップ（並行して保存）
   showCheerLoading();
@@ -1247,9 +1252,10 @@ async function getCheer(entry) {
 // ── 記録トースト ─────────────────────────────────
 let _toastTimer = null;
 function showRecordToast(entry, isPR) {
+  const est1rm = Math.round(entry.kg * (1 + entry.reps / 30));
   document.getElementById('toast-exercise').textContent = entry.exercise + (isPR ? '  🏆 PR更新！' : '');
   document.getElementById('toast-detail').textContent = `${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット`;
-  document.getElementById('toast-vol').textContent = `このセット ${entry.volume.toLocaleString()}kg`;
+  document.getElementById('toast-vol').textContent = `vol ${entry.volume.toLocaleString()}kg ／ 推定1RM ${est1rm}kg`;
   const toast = document.getElementById('record-toast');
   if (isPR) toast.style.borderColor = '#ffaa00';
   else toast.style.borderColor = '#ff4444';
@@ -1383,6 +1389,29 @@ function renderFatigue() {
       lastDays[muscle] = diff;
     } else {
       lastDays[muscle] = null;
+    }
+  }
+
+  // おすすめ部位
+  const RECOMMEND_GROUPS = [
+    { name: '胸',   muscles: ['大胸筋'] },
+    { name: '背中', muscles: ['広背筋','菱形筋'] },
+    { name: '肩',   muscles: ['三角筋前部','三角筋中部'] },
+    { name: '腕',   muscles: ['上腕二頭筋','上腕三頭筋'] },
+    { name: '脚',   muscles: ['大腿四頭筋','ハムストリングス'] },
+    { name: '臀部', muscles: ['大臀筋'] },
+    { name: '腹',   muscles: ['腹直筋'] },
+    { name: '前腕', muscles: ['前腕屈筋群'] },
+  ];
+  const readyGroups = RECOMMEND_GROUPS.filter(g =>
+    g.muscles.every(m => lastDays[m] === null || lastDays[m] >= 4)
+  );
+  const recEl = document.getElementById('today-recommend');
+  if (recEl) {
+    if (readyGroups.length === 0) {
+      recEl.innerHTML = '<div style="font-size:12px;color:#555">全部位が回復中 — 積極休養日もアリ</div>';
+    } else {
+      recEl.innerHTML = `<div style="font-size:11px;color:#888;margin-bottom:6px;font-weight:700">今日鍛えるならここ（準備OK）</div><div style="display:flex;flex-wrap:wrap;gap:6px">${readyGroups.map(g => `<span style="background:#0a2a0a;border:1px solid #44cc44;border-radius:6px;padding:3px 10px;color:#44cc44;font-weight:700;font-size:13px">${g.name}</span>`).join('')}</div>`;
     }
   }
 
@@ -1981,20 +2010,28 @@ function renderStreak() {
 function renderPR() {
   const byExercise = {};
   for (const e of logs) {
-    if (!byExercise[e.exercise] || e.kg > byExercise[e.exercise].kg) {
-      byExercise[e.exercise] = { kg: e.kg, date: e.date };
+    if (!byExercise[e.exercise]) {
+      byExercise[e.exercise] = { kg: 0, reps: 0, date: '', best1rm: 0 };
     }
+    const rec = byExercise[e.exercise];
+    if (e.kg > rec.kg) { rec.kg = e.kg; rec.date = e.date; rec.reps = e.reps; }
+    else if (e.kg === rec.kg && e.reps > rec.reps) { rec.reps = e.reps; }
+    const rm = Math.round(e.kg * (1 + e.reps / 30));
+    if (rm > rec.best1rm) rec.best1rm = rm;
   }
   const entries = Object.entries(byExercise).sort((a,b) => b[1].kg - a[1].kg);
   const el = document.getElementById('pr-list');
   if (!entries.length) { el.innerHTML = '<div class="empty">記録がありません</div>'; return; }
   el.innerHTML = entries.map(([ex, d]) => `
     <div class="pr-row">
-      <div>
+      <div style="flex:1">
         <div class="pr-exercise">${ex}</div>
         <div class="pr-date">${d.date}</div>
       </div>
-      <div class="pr-kg">${d.kg} kg</div>
+      <div style="text-align:right">
+        <div class="pr-kg">${d.kg} kg × ${d.reps}回</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">推定1RM ${d.best1rm} kg</div>
+      </div>
     </div>`).join('');
 }
 
