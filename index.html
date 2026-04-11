@@ -1996,7 +1996,21 @@ const MUSCLE_MAP = {
   ],
 };
 
-// ── 種目エイリアス（ラッドプル→ラットプルダウン 等） ──
+// ── 種目エイリアス ───────────────────────────────
+// 組み込みエイリアス（ユーザーが略称・誤字を使っても自動マッピング）
+const BUILTIN_ALIASES = {
+  'ラッドプル':      'ラットプルダウン',
+  'ラッドプルダウン':'ラットプルダウン',
+  'ラットプル':      'ラットプルダウン',
+  'ローロー':        'ケーブルローイング',
+  'ローイング':      'ケーブルローイング',
+  'ロウイング':      'ケーブルローイング',
+  'ショルダープレス':'ダンベルショルダープレス',
+  'アームカール':    'ダンベルカール',
+  'プレスダウン':    'ケーブルプレスダウン',
+  'ローワーバック':  'バックエクステンション',
+};
+
 function getExerciseAliases() {
   return JSON.parse(localStorage.getItem('exercise_aliases') || '{}');
 }
@@ -2007,7 +2021,7 @@ function saveExerciseAlias(from, to) {
 }
 
 function getMuscles(exerciseName) {
-  const aliases = getExerciseAliases();
+  const aliases = { ...BUILTIN_ALIASES, ...getExerciseAliases() };
   const name = aliases[exerciseName] || exerciseName;
   const results = [];
   for (const [muscle, exList] of Object.entries(MUSCLE_MAP)) {
