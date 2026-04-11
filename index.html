@@ -390,6 +390,13 @@
       <ul class="log-list" id="today-log">
         <li class="empty">まだ記録がありません</li>
       </ul>
+      <div id="suggest-banner" style="display:none;background:#0a2a0a;border:1px solid #44cc44;border-radius:10px;padding:12px 14px;margin-top:10px">
+        <div style="font-size:13px;color:#ccc" id="suggest-text"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="confirmSuggestion()" style="background:#44cc44;color:#000;border:none;border-radius:6px;padding:6px 16px;font-weight:700;font-size:13px;cursor:pointer">はい</button>
+          <button onclick="dismissSuggestion()" style="background:#2a2a2a;color:#888;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer">いいえ</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1073,6 +1080,12 @@ async function addLog() {
   const current1rm = Math.round(entry.kg * (1 + entry.reps / 30));
   const isPR = (maxKgForPR > 0 && entry.kg > maxKgForPR) || (maxRmForPR > 0 && current1rm > maxRmForPR);
   showRecordToast(entry, isPR);
+
+  // 未知種目のサジェスト
+  if (!getExerciseAliases()[entry.exercise] && getMuscles(entry.exercise).length === 0) {
+    const sug = findSimilarExercise(entry.exercise);
+    if (sug) showSuggestionBanner(entry.exercise, sug);
+  }
 
   // チアアップ（並行して保存）
   showCheerLoading();
@@ -1983,15 +1996,67 @@ const MUSCLE_MAP = {
   ],
 };
 
+// ── 種目エイリアス（ラッドプル→ラットプルダウン 等） ──
+function getExerciseAliases() {
+  return JSON.parse(localStorage.getItem('exercise_aliases') || '{}');
+}
+function saveExerciseAlias(from, to) {
+  const a = getExerciseAliases();
+  a[from] = to;
+  localStorage.setItem('exercise_aliases', JSON.stringify(a));
+}
+
 function getMuscles(exerciseName) {
-  const name = exerciseName.replace(/[ァ-ン]/g, s => String.fromCharCode(s.charCodeAt(0) - 0x60)); // カタカナ正規化不要だがトリム
+  const aliases = getExerciseAliases();
+  const name = aliases[exerciseName] || exerciseName;
   const results = [];
   for (const [muscle, exList] of Object.entries(MUSCLE_MAP)) {
-    if (exList.some(ex => exerciseName.includes(ex) || ex.includes(exerciseName))) {
+    if (exList.some(ex => name.includes(ex) || ex.includes(name))) {
       results.push(muscle);
     }
   }
-  return results; // マッチしない場合は空配列（デフォルト胸は廃止）
+  return results;
+}
+
+// ── 類似種目サジェスト ────────────────────────────
+function bigramSimilarity(a, b) {
+  const bg = s => { const r = new Set(); for (let i = 0; i < s.length - 1; i++) r.add(s[i] + s[i+1]); return r; };
+  const ba = bg(a), bb = bg(b);
+  let n = 0; for (const g of ba) if (bb.has(g)) n++;
+  return (2 * n) / ((ba.size + bb.size) || 1);
+}
+
+function findSimilarExercise(name) {
+  const allEx = new Set(Object.values(MUSCLE_MAP).flat());
+  let best = null, bestScore = 0.25;
+  for (const ex of allEx) {
+    const s = bigramSimilarity(name, ex);
+    if (s > bestScore) { bestScore = s; best = ex; }
+  }
+  return best;
+}
+
+let _pendingSuggestion = null;
+
+function showSuggestionBanner(from, to) {
+  _pendingSuggestion = { from, to };
+  const el = document.getElementById('suggest-banner');
+  if (!el) return;
+  document.getElementById('suggest-text').textContent = `「${from}」は「${to}」のことですか？ → はいを押すと次回から筋肉も反映されます`;
+  el.style.display = 'block';
+}
+
+function confirmSuggestion() {
+  if (!_pendingSuggestion) return;
+  saveExerciseAlias(_pendingSuggestion.from, _pendingSuggestion.to);
+  _pendingSuggestion = null;
+  document.getElementById('suggest-banner').style.display = 'none';
+  renderAll();
+}
+
+function dismissSuggestion() {
+  _pendingSuggestion = null;
+  document.getElementById('suggest-banner').style.display = 'none';
 }
 
 // ── ストリーク＆PR更新 ──────────────────────────
