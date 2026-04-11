@@ -1387,13 +1387,12 @@ function renderFatigue() {
     前腕伸筋群: [],
   };
 
-  // 各部位の最終トレ日を探す
+  // 各部位の最終トレ日を探す（getMuscles経由でエイリアス対応）
   const lastDays = {};
   for (const muscle of MUSCLES) {
-    const exList = MUSCLE_MAP[muscle] || [];
     let latest = null;
     for (const e of logs) {
-      if (exList.some(ex => e.exercise.includes(ex) || ex.includes(e.exercise))) {
+      if (getMuscles(e.exercise).includes(muscle)) {
         if (!latest || e.date > latest) latest = e.date;
       }
     }
