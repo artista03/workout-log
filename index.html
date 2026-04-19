@@ -392,6 +392,12 @@
         <input type="number" id="reps" placeholder="回数" min="1">
         <input type="number" id="sets" placeholder="セット" min="1" value="1">
       </div>
+      <div class="input-row" style="margin-bottom:6px">
+        <input type="number" id="rir" placeholder="RIR（あと何回できた？任意 0-5）" min="0" max="5" step="1" style="flex:1">
+      </div>
+      <div style="font-size:11px;color:#555;margin-bottom:6px;line-height:1.5">
+        RIR：0=限界、1=あと1回余力、… 5=まだ余裕。「追い込み度」を数値化して進捗を正確に測る。
+      </div>
       <button class="primary" onclick="addLog()">記録する</button>
     </div>
 
@@ -668,6 +674,17 @@ let cardioLogs    = [];
 let fileSha       = null;
 let cardioFileSha = null;
 
+// ── XSS対策：HTMLエスケープヘルパー ───────────────
+function esc(v) {
+  if (v === null || v === undefined) return '';
+  return String(v)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── 日付ユーティリティ（JST固定） ────────────────
 function today() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date());
@@ -716,6 +733,62 @@ function switchTab(tab) {
 }
 
 // ── GitHub API ──────────────────────────────────
+// tsベースでローカルとリモートをマージ（同じts=重複を排除、両方にない=残す）
+function mergeByTs(local, remote) {
+  const byTs = new Map();
+  for (const e of remote) if (e && e.ts != null) byTs.set(e.ts, e);
+  for (const e of local)  if (e && e.ts != null) byTs.set(e.ts, e); // ローカルが勝つ（最新の編集）
+  // ts無しのエントリは両方から残す（古いデータ互換）
+  const noTs = [...remote.filter(e => !e || e.ts == null), ...local.filter(e => !e || e.ts == null)];
+  return [...byTs.values(), ...noTs].sort((a, b) => {
+    const da = (a && a.date) || '';
+    const db = (b && b.date) || '';
+    if (da !== db) return da.localeCompare(db);
+    return ((a && a.ts) || 0) - ((b && b.ts) || 0);
+  });
+}
+
+// 汎用：リモートを取得→ローカルとマージ→書き込み。競合(409)はもう一度マージしてリトライ
+async function saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries = 2) {
+  // 最新のリモートを取得
+  let remoteData = [];
+  let remoteSha = null;
+  const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${file}`, {
+    headers: { Authorization: `token ${GH_TOKEN}` }
+  });
+  if (fresh.status === 404) {
+    remoteSha = null;
+  } else if (fresh.ok) {
+    const d = await fresh.json();
+    remoteSha = d.sha;
+    try {
+      remoteData = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(d.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
+    } catch(e) { remoteData = []; }
+  } else {
+    throw new Error(`HTTP ${fresh.status}`);
+  }
+
+  // マージしてローカル＆送信データを更新
+  const merged = mergeByTs(getLocal(), Array.isArray(remoteData) ? remoteData : []);
+  setLocal(merged);
+  setSha(remoteSha);
+
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(merged, null, 2))));
+  const body = { message, content, ...(remoteSha ? { sha: remoteSha } : {}) };
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${file}`, {
+    method: 'PUT',
+    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (res.status === 409 && retries > 0) {
+    // 他デバイスと同時書き込み：再マージしてリトライ
+    return saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries - 1);
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  setSha(data.content.sha);
+}
+
 async function loadLogs() {
   try {
     const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
@@ -739,24 +812,17 @@ async function loadLogs() {
 }
 
 async function saveLogs() {
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(logs, null, 2))));
-  const body = { message: `log ${today()}`, content, ...(fileSha ? { sha: fileSha } : {}) };
-  const res  = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
-    method: 'PUT',
-    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 409) {
-    // SHAが古い：最新SHAを取得してリトライ
-    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${FILE}`, {
-      headers: { Authorization: `token ${GH_TOKEN}` }
-    });
-    if (fresh.ok) { const d = await fresh.json(); fileSha = d.sha; }
-    return saveLogs();
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  fileSha = data.content.sha;
+  await saveWithMerge(
+    FILE,
+    () => logs,
+    (v) => { logs = v; },
+    () => fileSha,
+    (v) => { fileSha = v; },
+    `log ${today()}`
+  );
+  // マージで他端末の新規エントリが混ざっている可能性 → 再描画
+  renderAll();
+  renderCalendar();
 }
 
 // ── 有酸素 GitHub API ────────────────────────────
@@ -777,23 +843,15 @@ async function loadCardioLogs() {
 }
 
 async function saveCardioLogs() {
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(cardioLogs, null, 2))));
-  const body = { message: `cardio ${today()}`, content, ...(cardioFileSha ? { sha: cardioFileSha } : {}) };
-  const res  = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${CARDIO_FILE}`, {
-    method: 'PUT',
-    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 409) {
-    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${CARDIO_FILE}`, {
-      headers: { Authorization: `token ${GH_TOKEN}` }
-    });
-    if (fresh.ok) { const d = await fresh.json(); cardioFileSha = d.sha; }
-    return saveCardioLogs();
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  cardioFileSha = data.content.sha;
+  await saveWithMerge(
+    CARDIO_FILE,
+    () => cardioLogs,
+    (v) => { cardioLogs = v; },
+    () => cardioFileSha,
+    (v) => { cardioFileSha = v; },
+    `cardio ${today()}`
+  );
+  renderCardio();
 }
 
 // ── 有酸素 記録追加 ──────────────────────────────
@@ -895,12 +953,12 @@ function renderCardio() {
     ul.innerHTML = todayCardio.map(e => `
       <li class="log-item">
         <div style="flex:1">
-          <div class="log-name">${e.exercise || 'エアロバイク'}</div>
-          <div class="log-detail">負荷 ${e.load} × ${e.min}分</div>
+          <div class="log-name">${esc(e.exercise || 'エアロバイク')}</div>
+          <div class="log-detail">負荷 ${esc(e.load)} × ${esc(e.min)}分</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
-          <div class="log-cardio">${e.min}分</div>
-          <button class="del-btn" onclick="deleteCardioLog(${e.ts})" title="削除">×</button>
+          <div class="log-cardio">${esc(e.min)}分</div>
+          <button class="del-btn" onclick="deleteCardioLog(${Number(e.ts)})" title="削除">×</button>
         </div>
       </li>`).join('');
   }
@@ -951,23 +1009,15 @@ async function deleteWeight(ts) {
 }
 
 async function flushWeightLogs() {
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(weightLogs, null, 2))));
-  const body = { message: `weight ${today()}`, content, ...(weightFileSha ? { sha: weightFileSha } : {}) };
-  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
-    method: 'PUT',
-    headers: { Authorization: `token ${GH_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (res.status === 409) {
-    const fresh = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${WEIGHT_FILE}`, {
-      headers: { Authorization: `token ${GH_TOKEN}` }
-    });
-    if (fresh.ok) { const d = await fresh.json(); weightFileSha = d.sha; }
-    return flushWeightLogs();
-  }
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  weightFileSha = data.content.sha;
+  await saveWithMerge(
+    WEIGHT_FILE,
+    () => weightLogs,
+    (v) => { weightLogs = v.slice().sort((a,b) => a.date.localeCompare(b.date) || (a.ts||0)-(b.ts||0)); },
+    () => weightFileSha,
+    (v) => { weightFileSha = v; },
+    `weight ${today()}`
+  );
+  renderWeight();
 }
 
 function renderWeight() {
@@ -1085,7 +1135,7 @@ function updateExerciseSelect() {
   const current = sel.value;
   const list = getExerciseList();
   sel.innerHTML = '<option value="">種目を選ぶ</option>'
-    + list.map(e => `<option value="${e}">${e}</option>`).join('')
+    + list.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('')
     + '<option value="__new__">＋ 新しい種目</option>';
   if (current) sel.value = current;
 }
@@ -1106,8 +1156,8 @@ function onExerciseSelect() {
       const last1rm = Math.round(last.kg * (1 + last.reps / 30));
       hint.style.display = 'block';
       hint.innerHTML =
-        `前回: <strong style="color:#ff8888">${last.kg}kg × ${last.reps}回 × ${last.sets||1}セット</strong> <span style="color:#555">(${last.date})</span>` +
-        `<br>最高重量: <strong style="color:#ff4444">${maxKg}kg</strong> ／ 前回推定1RM: ${last1rm}kg`;
+        `前回: <strong style="color:#ff8888">${esc(last.kg)}kg × ${esc(last.reps)}回 × ${esc(last.sets||1)}セット</strong> <span style="color:#555">(${esc(last.date)})</span>` +
+        `<br>最高重量: <strong style="color:#ff4444">${esc(maxKg)}kg</strong> ／ 前回推定1RM: ${esc(last1rm)}kg`;
     } else {
       hint.style.display = 'none';
     }
@@ -1128,6 +1178,8 @@ async function addLog() {
   const kg       = parseFloat(document.getElementById('kg').value);
   const reps     = parseInt(document.getElementById('reps').value);
   const sets     = parseInt(document.getElementById('sets').value) || 1;
+  const rirRaw   = document.getElementById('rir').value;
+  const rir      = rirRaw === '' ? null : Math.max(0, Math.min(5, parseInt(rirRaw)));
   if (!exercise || !kg || !reps) { alert('種目・kg・回数を入力してください'); return; }
 
   // 新種目をリストに保存
@@ -1137,7 +1189,7 @@ async function addLog() {
     updateExerciseSelect();
   }
 
-  const entry = { date: today(), ts: Date.now(), exercise, kg, reps, sets, volume: kg * reps * sets };
+  const entry = { date: today(), ts: Date.now(), exercise, kg, reps, sets, rir, volume: kg * reps * sets };
   logs.push(entry);
   renderAll();
   renderCalendar();
@@ -1149,6 +1201,7 @@ async function addLog() {
   document.getElementById('kg').value = '';
   document.getElementById('reps').value = '';
   document.getElementById('sets').value = '1';
+  document.getElementById('rir').value = '';
 
   // インターバルタイマー開始
   startRestTimer(90);
@@ -1291,6 +1344,7 @@ ${buildProfileContext()}
 種目: ${entry.exercise}
 重量: ${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット
 ボリューム: ${entry.volume.toLocaleString()}kg
+${entry.rir != null ? `RIR（あと何回できたか）: ${entry.rir}　→　${entry.rir === 0 ? '限界まで追い込んだ' : entry.rir <= 2 ? 'しっかり追い込めた' : '余力あり・負荷が軽いかも'}` : ''}
 ${isPR ? `★★★ 自己ベスト更新！（前回最高 ${maxKg}kg → 今日 ${entry.kg}kg）` : ''}
 ${benchmarkText}
 
@@ -1348,7 +1402,7 @@ let _toastTimer = null;
 function showRecordToast(entry, isPR) {
   const est1rm = Math.round(entry.kg * (1 + entry.reps / 30));
   document.getElementById('toast-exercise').textContent = entry.exercise + (isPR ? '  🏆 PR更新！' : '');
-  document.getElementById('toast-detail').textContent = `${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット`;
+  document.getElementById('toast-detail').textContent = `${entry.kg}kg × ${entry.reps}回 × ${entry.sets}セット${entry.rir != null ? ` (RIR ${entry.rir})` : ''}`;
   document.getElementById('toast-vol').textContent = `vol ${entry.volume.toLocaleString()}kg ／ 推定1RM ${est1rm}kg`;
   const toast = document.getElementById('record-toast');
   if (isPR) toast.style.borderColor = '#ffaa00';
@@ -1427,10 +1481,32 @@ function renderVolumeGraph() {
       <text x="${x + W/2}" y="${H + 32}" text-anchor="middle" font-size="9" fill="${i===weeks.length-1?'#aaa':'#555'}">${w.label}</text>`;
   }).join('');
 
+  // デロード推奨判定：直近3週連続で増加 or 今週が過去4週平均比+25%以上
+  let deloadBanner = '';
+  if (weeks.length >= 4) {
+    const last4 = weeks.slice(-4);
+    const curr = last4[3].vol;
+    const prev3 = last4.slice(0, 3);
+    const consecutiveUp = prev3.every((w, i) => i === 0 || w.vol >= prev3[i-1].vol) && curr > prev3[2].vol && prev3[2].vol > 0;
+    const avgPrev3 = prev3.reduce((s, w) => s + w.vol, 0) / 3;
+    const spike = avgPrev3 > 0 && curr >= avgPrev3 * 1.25;
+    if (consecutiveUp && curr >= 3000) {
+      deloadBanner = `
+        <div style="background:linear-gradient(135deg,#2a1a00,#3a2500);border:1px solid #ff8800;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#ffcc88;line-height:1.5">
+          <strong style="color:#ff8800">⚠ デロード推奨</strong>　3週連続でボリューム増加中（${Math.round(prev3[0].vol/1000*10)/10}t → ${Math.round(prev3[1].vol/1000*10)/10}t → ${Math.round(prev3[2].vol/1000*10)/10}t → ${Math.round(curr/1000*10)/10}t）。疲労蓄積のサイン。来週は50〜60%のボリュームに落として回復週にすると、その後に伸びが来る。
+        </div>`;
+    } else if (spike && curr >= 5000) {
+      deloadBanner = `
+        <div style="background:linear-gradient(135deg,#1a1a00,#2a2500);border:1px solid #aaaa00;border-radius:10px;padding:10px 12px;margin-top:10px;font-size:13px;color:#ffff88;line-height:1.5">
+          <strong style="color:#ddcc00">📈 ピーク週</strong>　今週は過去3週平均（${Math.round(avgPrev3/1000*10)/10}t）比+${Math.round((curr/avgPrev3-1)*100)}%。アニマルスピリッツは歓迎だが、このペースが続くようなら来々週あたりでデロードを計画しておけ。
+        </div>`;
+    }
+  }
+
   wrap.innerHTML = `<svg width="${totalW}" height="${H + 40}" viewBox="0 0 ${totalW} ${H + 40}">
     <text x="10" y="14" font-size="9" fill="#555">kg</text>
     ${bars}
-  </svg>`;
+  </svg>${deloadBanner}`;
 }
 
 // ── 筋肉疲労チェッカー ───────────────────────────
@@ -1547,10 +1623,10 @@ function renderFatigue() {
     const color = fatigueColor(days);
     const label = fatigueLabel(days);
     const status = days === null ? '未トレ' : days === 0 ? '要休養' : days === 1 ? '昨日・回復中' : days <= 3 ? '回復中' : '準備OK';
-    return `<div class="fatigue-item" onclick="toggleFatigueMenu(this,'${muscle}')">
-      <div class="fatigue-dot" style="background:${color}"></div>
-      <span class="fatigue-muscle">${muscle}</span>
-      <span class="fatigue-days">${label}・${status}</span>
+    return `<div class="fatigue-item" data-muscle="${esc(muscle)}" onclick="toggleFatigueMenu(this, this.dataset.muscle)">
+      <div class="fatigue-dot" style="background:${esc(color)}"></div>
+      <span class="fatigue-muscle">${esc(muscle)}</span>
+      <span class="fatigue-days">${esc(label)}・${esc(status)}</span>
       <span class="fatigue-arrow">▾</span>
     </div>`;
   }).join('');
@@ -1567,7 +1643,7 @@ function toggleFatigueMenu(el, muscle) {
   const exercises = (MUSCLE_MAP[muscle] || []).slice(0, 7);
   const menu = document.createElement('div');
   menu.className = 'fatigue-menu';
-  menu.innerHTML = exercises.map(ex => `<span class="fatigue-menu-ex">${ex}</span>`).join('');
+  menu.innerHTML = exercises.map(ex => `<span class="fatigue-menu-ex">${esc(ex)}</span>`).join('');
   el.appendChild(menu);
   arrow.textContent = '▴';
 }
@@ -1710,15 +1786,15 @@ function renderAll() {
       return `
         <li class="log-item">
           <div style="flex:1">
-            <div class="log-name">${e.exercise}${isPR ? '<span class="pr-badge">PR</span>' : ''}</div>
-            <div class="log-detail">${e.kg}kg × ${e.reps}回 × ${e.sets}セット</div>
-            ${getMuscles(e.exercise).length ? `<div class="log-muscle">📍 ${getMuscles(e.exercise).join(' · ')}</div>` : ''}
-            ${timeStr ? `<div style="font-size:11px;color:#555;margin-top:3px">${timeStr}${intervalStr ? ' · ' + intervalStr : ''}</div>` : ''}
+            <div class="log-name">${esc(e.exercise)}${isPR ? '<span class="pr-badge">PR</span>' : ''}</div>
+            <div class="log-detail">${esc(e.kg)}kg × ${esc(e.reps)}回 × ${esc(e.sets)}セット${e.rir != null ? ` <span style="color:${e.rir === 0 ? '#ff4444' : e.rir <= 2 ? '#ff8800' : '#888'};font-size:12px;margin-left:4px">RIR ${esc(e.rir)}</span>` : ''}</div>
+            ${getMuscles(e.exercise).length ? `<div class="log-muscle">📍 ${esc(getMuscles(e.exercise).join(' · '))}</div>` : ''}
+            ${timeStr ? `<div style="font-size:11px;color:#555;margin-top:3px">${esc(timeStr)}${intervalStr ? ' · ' + esc(intervalStr) : ''}</div>` : ''}
             ${summaryHtml}
           </div>
           <div style="display:flex;align-items:center;gap:4px">
-            <div class="log-vol">${e.volume.toLocaleString()}kg</div>
-            <button class="del-btn" onclick="deleteLog(${e.ts})" title="削除">×</button>
+            <div class="log-vol">${esc(e.volume.toLocaleString())}kg</div>
+            <button class="del-btn" onclick="deleteLog(${Number(e.ts)})" title="削除">×</button>
           </div>
         </li>`;
     }).join('');
@@ -1726,8 +1802,11 @@ function renderAll() {
 }
 
 // ── トレーナーへの質問 ──────────────────────────
+// Markdownを安全にHTML化：先にエスケープしてから、限定的な記法だけタグに変換
 function renderMarkdown(text) {
-  const lines = text.split('\n');
+  // インラインの**太字**だけ、エスケープ後のトークンを<strong>に戻す
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const lines = String(text || '').split('\n');
   const out = [];
   let i = 0;
   while (i < lines.length) {
@@ -1742,12 +1821,12 @@ function renderMarkdown(text) {
     } else if (/^[-*]\s/.test(line.trim())) {
       const items = [];
       while (i < lines.length && /^[-*]\s/.test(lines[i].trim())) {
-        items.push(`<li>${lines[i].trim().slice(2)}</li>`);
+        items.push(`<li>${inline(lines[i].trim().slice(2))}</li>`);
         i++;
       }
       out.push(`<ul>${items.join('')}</ul>`);
     } else {
-      out.push(line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'));
+      out.push(inline(line));
       i++;
     }
   }
@@ -1757,13 +1836,15 @@ function renderMarkdown(text) {
 function buildTable(rows) {
   const isSep = r => /^\|[-|: ]+\|$/.test(r.trim().replace(/ /g, ''));
   const parse = r => r.split('|').slice(1, -1).map(c => c.trim());
+  // セル内容は必ずエスケープ
+  const inline = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   let html = '<table>';
   let isHeader = true;
   for (const row of rows) {
     if (isSep(row)) { isHeader = false; continue; }
     const cells = parse(row);
     const tag = isHeader ? 'th' : 'td';
-    html += '<tr>' + cells.map(c => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+    html += '<tr>' + cells.map(c => `<${tag}>${inline(c)}</${tag}>`).join('') + '</tr>';
     if (isHeader) isHeader = false;
   }
   return html + '</table>';
@@ -1829,8 +1910,12 @@ function buildChatPrompt(question) {
   const todayVol = todayEntries.reduce((s,e) => s+e.volume, 0);
   const todayCardio = cardioLogs.filter(e => e.date === today());
   const todaySummary = todayEntries.length
-    ? todayEntries.map(e => `${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット（${e.volume.toLocaleString()}kg）`).join('\n')
+    ? todayEntries.map(e => `${e.exercise} ${e.kg}kg×${e.reps}回×${e.sets||1}セット（${e.volume.toLocaleString()}kg）${e.rir != null ? ` RIR${e.rir}` : ''}`).join('\n')
     : 'なし';
+
+  // RIRの平均（直近30件・記録あるもののみ）
+  const rirRecent = logs.filter(e => e.rir != null).slice(-30);
+  const avgRir = rirRecent.length ? (rirRecent.reduce((s,e) => s + e.rir, 0) / rirRecent.length).toFixed(1) : null;
 
   // 先週同日・先月平均ボリュームと比較
   const lastWeekSameDay = (() => {
@@ -1856,6 +1941,7 @@ ${todaySummary}
 今週の累計: ${weekVol.toLocaleString()}kg
 今月の累計: ${monthVol.toLocaleString()}kg
 連続トレーニング: ${streak}日 / 総トレーニング日数: ${totalDays}日
+${avgRir !== null ? `直近30セットの平均RIR: ${avgRir}（${avgRir <= 1 ? '追い込み十分' : avgRir <= 2.5 ? '適切なハードさ' : '追い込み不足・もう1〜2レップ攻めても良い'}）` : ''}
 
 【種目別サマリー（全期間）】
 ${summaries || 'まだデータなし'}
@@ -2199,12 +2285,12 @@ function renderPR() {
   el.innerHTML = entries.map(([ex, d]) => `
     <div class="pr-row">
       <div style="flex:1">
-        <div class="pr-exercise">${ex}</div>
-        <div class="pr-date">${d.date}</div>
+        <div class="pr-exercise">${esc(ex)}</div>
+        <div class="pr-date">${esc(d.date)}</div>
       </div>
       <div style="text-align:right">
-        <div class="pr-kg">${d.kg} kg × ${d.reps}回</div>
-        <div style="font-size:12px;color:#888;margin-top:2px">推定1RM ${d.best1rm} kg</div>
+        <div class="pr-kg">${esc(d.kg)} kg × ${esc(d.reps)}回</div>
+        <div style="font-size:12px;color:#888;margin-top:2px">推定1RM ${esc(d.best1rm)} kg</div>
       </div>
     </div>`).join('');
 }
@@ -2402,7 +2488,7 @@ function updateExerciseGraphSelect() {
   const current = sel.value;
   const list = getExerciseList();
   sel.innerHTML = '<option value="">種目を選ぶ</option>'
-    + list.map(e => `<option value="${e}">${e}</option>`).join('');
+    + list.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
   if (current && list.includes(current)) { sel.value = current; renderExerciseGraph(); }
 }
 
