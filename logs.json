@@ -3493,5 +3493,15 @@
     "sets": 1,
     "rir": null,
     "volume": 200
+  },
+  {
+    "date": "2026-04-22",
+    "ts": 1776821672517,
+    "exercise": "リストカール",
+    "kg": 14,
+    "reps": 15,
+    "sets": 1,
+    "rir": null,
+    "volume": 210
   }
 ]
