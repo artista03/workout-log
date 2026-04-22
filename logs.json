@@ -3453,5 +3453,15 @@
     "sets": 1,
     "rir": null,
     "volume": 200
+  },
+  {
+    "date": "2026-04-22",
+    "ts": 1776821403644,
+    "exercise": "アブダクター",
+    "kg": 35,
+    "reps": 30,
+    "sets": 1,
+    "rir": null,
+    "volume": 1050
   }
 ]
