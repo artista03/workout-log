@@ -734,10 +734,12 @@ function switchTab(tab) {
 
 // ── GitHub API ──────────────────────────────────
 // tsベースでローカルとリモートをマージ（同じts=重複を排除、両方にない=残す）
-function mergeByTs(local, remote) {
+// deletedTs: Set<number> 削除されたtsは両サイドから除外（リモートからの復活を防ぐ）
+function mergeByTs(local, remote, deletedTs) {
+  const isDeleted = (ts) => deletedTs && deletedTs.has(ts);
   const byTs = new Map();
-  for (const e of remote) if (e && e.ts != null) byTs.set(e.ts, e);
-  for (const e of local)  if (e && e.ts != null) byTs.set(e.ts, e); // ローカルが勝つ（最新の編集）
+  for (const e of remote) if (e && e.ts != null && !isDeleted(e.ts)) byTs.set(e.ts, e);
+  for (const e of local)  if (e && e.ts != null && !isDeleted(e.ts)) byTs.set(e.ts, e); // ローカルが勝つ（最新の編集）
   // ts無しのエントリは両方から残す（古いデータ互換）
   const noTs = [...remote.filter(e => !e || e.ts == null), ...local.filter(e => !e || e.ts == null)];
   return [...byTs.values(), ...noTs].sort((a, b) => {
@@ -749,7 +751,8 @@ function mergeByTs(local, remote) {
 }
 
 // 汎用：リモートを取得→ローカルとマージ→書き込み。競合(409)はもう一度マージしてリトライ
-async function saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries = 2) {
+// deletedTs: 削除されたtsの配列。リモートから復活しないようマージ時に除外する
+async function saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries = 2, deletedTs = null) {
   // 最新のリモートを取得
   let remoteData = [];
   let remoteSha = null;
@@ -769,7 +772,8 @@ async function saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, 
   }
 
   // マージしてローカル＆送信データを更新
-  const merged = mergeByTs(getLocal(), Array.isArray(remoteData) ? remoteData : []);
+  const deletedSet = deletedTs && deletedTs.length ? new Set(deletedTs) : null;
+  const merged = mergeByTs(getLocal(), Array.isArray(remoteData) ? remoteData : [], deletedSet);
   setLocal(merged);
   setSha(remoteSha);
 
@@ -781,8 +785,8 @@ async function saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, 
     body: JSON.stringify(body)
   });
   if (res.status === 409 && retries > 0) {
-    // 他デバイスと同時書き込み：再マージしてリトライ
-    return saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries - 1);
+    // 他デバイスと同時書き込み：再マージしてリトライ（削除情報も保持）
+    return saveWithMerge(file, getLocal, setLocal, getSha, setSha, message, retries - 1, deletedTs);
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -811,14 +815,16 @@ async function loadLogs() {
   renderCalendar();
 }
 
-async function saveLogs() {
+async function saveLogs(deletedTs = null) {
   await saveWithMerge(
     FILE,
     () => logs,
     (v) => { logs = v; },
     () => fileSha,
     (v) => { fileSha = v; },
-    `log ${today()}`
+    `log ${today()}`,
+    2,
+    deletedTs
   );
   // マージで他端末の新規エントリが混ざっている可能性 → 再描画
   renderAll();
@@ -842,14 +848,16 @@ async function loadCardioLogs() {
   renderCardio();
 }
 
-async function saveCardioLogs() {
+async function saveCardioLogs(deletedTs = null) {
   await saveWithMerge(
     CARDIO_FILE,
     () => cardioLogs,
     (v) => { cardioLogs = v; },
     () => cardioFileSha,
     (v) => { cardioFileSha = v; },
-    `cardio ${today()}`
+    `cardio ${today()}`,
+    2,
+    deletedTs
   );
   renderCardio();
 }
@@ -1004,18 +1012,20 @@ async function deleteWeight(ts) {
   if (idx < 0) return;
   weightLogs.splice(idx, 1);
   renderWeight();
-  await flushWeightLogs();
+  await flushWeightLogs([ts]);
   document.getElementById('status').textContent = '削除完了 ✓';
 }
 
-async function flushWeightLogs() {
+async function flushWeightLogs(deletedTs = null) {
   await saveWithMerge(
     WEIGHT_FILE,
     () => weightLogs,
     (v) => { weightLogs = v.slice().sort((a,b) => a.date.localeCompare(b.date) || (a.ts||0)-(b.ts||0)); },
     () => weightFileSha,
     (v) => { weightFileSha = v; },
-    `weight ${today()}`
+    `weight ${today()}`,
+    2,
+    deletedTs
   );
   renderWeight();
 }
@@ -1242,7 +1252,7 @@ async function deleteLog(ts) {
   logs.splice(idx, 1);
   renderAll();
   renderCalendar();
-  await saveLogs().then(() => {
+  await saveLogs([ts]).then(() => {
     document.getElementById('status').textContent = '削除完了 ✓';
   }).catch(e => {
     document.getElementById('status').textContent = '削除エラー: ' + e.message;
@@ -1256,7 +1266,7 @@ async function deleteCardioLog(ts) {
   cardioLogs.splice(idx, 1);
   renderCardio();
   renderCalendar();
-  await saveCardioLogs().then(() => {
+  await saveCardioLogs([ts]).then(() => {
     document.getElementById('status').textContent = '削除完了 ✓';
   }).catch(e => {
     document.getElementById('status').textContent = '削除エラー: ' + e.message;
