@@ -213,6 +213,83 @@
     .pr-kg { color: #ff4444; font-weight: 800; font-size: 16px; }
     .pr-date { color: #555; font-size: 12px; }
 
+    /* 日付詳細パネル */
+    .cal-detail-panel {
+      margin-top: 14px;
+      background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+      border: 1px solid #2a2a2a;
+      border-radius: 14px;
+      overflow: hidden;
+      animation: slideDown 0.28s cubic-bezier(.2,.8,.2,1);
+    }
+    .cal-detail-panel.empty-state {
+      text-align: center; padding: 24px; color: #555; font-size: 13px;
+      border: 1px dashed #2a2a2a; background: transparent;
+    }
+    .cal-detail-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px;
+      background: linear-gradient(90deg, #2a0808 0%, #1a0404 40%, #141414 100%);
+      border-bottom: 1px solid #2a2a2a;
+    }
+    .cal-detail-date { font-size: 17px; font-weight: 800; color: #fff; letter-spacing: 0.5px; }
+    .cal-detail-dow { font-size: 13px; color: #888; margin-left: 8px; font-weight: 400; }
+    .cal-detail-stats { display: flex; gap: 14px; align-items: center; }
+    .cal-detail-vol { color: #ff4444; font-weight: 900; font-size: 20px; line-height: 1; }
+    .cal-detail-vol-unit { color: #888; font-size: 11px; margin-left: 3px; font-weight: 400; }
+    .cal-detail-sets { color: #aaa; font-size: 12px; background: #2a2a2a; padding: 3px 8px; border-radius: 10px; }
+    .cal-detail-close {
+      background: none; border: none; color: #666; font-size: 22px;
+      cursor: pointer; padding: 0 4px; line-height: 1;
+      transition: color 0.15s;
+    }
+    .cal-detail-close:hover { color: #fff; }
+
+    .cal-exercise-list { padding: 10px; }
+    .cal-exercise-card {
+      background: #1a1a1a; border: 1px solid #262626;
+      border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+      transition: border-color 0.15s;
+    }
+    .cal-exercise-card:last-child { margin-bottom: 0; }
+    .cal-exercise-card.has-pr { border-color: #ff4444; box-shadow: 0 0 12px rgba(255,68,68,0.15); }
+    .cal-exercise-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px;
+    }
+    .cal-exercise-name { font-weight: 700; font-size: 14px; color: #fff; }
+    .cal-exercise-meta { font-size: 11px; color: #666; }
+    .cal-sets-row { display: flex; flex-wrap: wrap; gap: 6px; }
+    .cal-set-pill {
+      background: #2a0808; color: #ff8888; border: 1px solid #3d1010;
+      padding: 4px 9px; border-radius: 6px; font-size: 12px;
+      font-weight: 600; font-variant-numeric: tabular-nums;
+    }
+    .cal-set-pill.top { background: #441111; color: #ffaaaa; border-color: #661515; }
+    .cal-set-pill.pr { background: #ff4444; color: #fff; border-color: #ff4444; box-shadow: 0 0 8px rgba(255,68,68,0.4); }
+    .cal-exercise-foot {
+      display: flex; justify-content: space-between;
+      font-size: 11px; color: #666; margin-top: 10px;
+      padding-top: 8px; border-top: 1px dashed #222;
+      font-variant-numeric: tabular-nums;
+    }
+    .cal-exercise-foot .vol { color: #ff8888; font-weight: 600; }
+
+    .cal-cardio-section { padding: 0 10px 10px; }
+    .cal-cardio-card {
+      background: linear-gradient(135deg, #0e1f0e, #112a12);
+      border: 1px solid #1f4422;
+      border-radius: 10px; padding: 11px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .cal-cardio-title { color: #44cc44; font-weight: 700; font-size: 13px; }
+    .cal-cardio-detail { font-size: 12px; color: #aaa; }
+
+    @keyframes slideDown {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     /* 部位図 */
     .body-svg-wrap { display: flex; justify-content: center; margin-top: 10px; }
     .muscle-part { transition: fill 0.3s; }
@@ -508,7 +585,7 @@
       <button onclick="calNext()" style="background:none;border:none;color:#888;font-size:20px;cursor:pointer;padding:0 8px">&#8250;</button>
     </div>
     <div id="cal-grid"></div>
-    <div id="cal-detail" style="margin-top:12px;font-size:13px;color:#aaa;min-height:20px"></div>
+    <div id="cal-detail"></div>
     <div class="body-svg-wrap" id="body-svg-wrap" style="display:none">
       <svg width="120" height="220" viewBox="0 0 120 220" xmlns="http://www.w3.org/2000/svg">
         <!-- 頭 -->
@@ -2392,24 +2469,120 @@ function renderCalendar() {
   html += '</div>';
 }
 
+function closeCalDetail() {
+  const panel = document.getElementById('cal-detail');
+  panel.innerHTML = '';
+  panel.className = '';
+  document.getElementById('body-svg-wrap').style.display = 'none';
+}
+
 function calClick(d) {
   const date = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
   const dayLogs = logs.filter(e => e.date === date);
   const dayCardio = cardioLogs.filter(e => e.date === date);
+  const panel = document.getElementById('cal-detail');
+
   if (!dayLogs.length && !dayCardio.length) {
-    document.getElementById('cal-detail').textContent = 'この日の記録はなし';
+    panel.className = 'cal-detail-panel empty-state';
+    panel.innerHTML = 'この日の記録はなし';
     document.getElementById('body-svg-wrap').style.display = 'none';
     return;
   }
-  const lines = [];
+
+  // 曜日
+  const DOW_JA = ['日','月','火','水','木','金','土'];
+  const dt = new Date(calYear, calMonth, d);
+  const dow = DOW_JA[dt.getDay()];
+
+  // 合計
+  const totalVol = dayLogs.reduce((s,e) => s + (e.volume || 0), 0);
+  const totalSets = dayLogs.length;
+
+  // 種目ごとにグループ化
+  const byExercise = new Map();
+  for (const e of dayLogs) {
+    if (!byExercise.has(e.exercise)) byExercise.set(e.exercise, []);
+    byExercise.get(e.exercise).push(e);
+  }
+
+  // PR判定用：その日以前の各種目の最高kg
+  const prHistory = {};
+  for (const e of logs) {
+    if (e.date >= date) continue;
+    prHistory[e.exercise] = Math.max(prHistory[e.exercise] || 0, e.kg || 0);
+  }
+
+  const fmtTime = (ts) => {
+    const t = new Date(ts);
+    return `${String(t.getHours()).padStart(2,'0')}:${String(t.getMinutes()).padStart(2,'0')}`;
+  };
+
+  let html = `
+    <div class="cal-detail-header">
+      <div>
+        <span class="cal-detail-date">${date}</span>
+        <span class="cal-detail-dow">(${dow})</span>
+      </div>
+      <div class="cal-detail-stats">
+        ${totalVol ? `<div><span class="cal-detail-vol">${totalVol.toLocaleString()}</span><span class="cal-detail-vol-unit">kg</span></div>` : ''}
+        ${totalSets ? `<div class="cal-detail-sets">${totalSets}セット</div>` : ''}
+        <button class="cal-detail-close" onclick="closeCalDetail()" title="閉じる">×</button>
+      </div>
+    </div>
+  `;
+
   if (dayLogs.length) {
-    const vol = dayLogs.reduce((s,e) => s+e.volume, 0);
-    lines.push(`筋トレ: ${dayLogs.map(e => `${e.exercise} ${e.kg}kg×${e.reps}回`).join(' / ')} (計${vol.toLocaleString()}kg)`);
+    html += '<div class="cal-exercise-list">';
+    for (const [exercise, sets] of byExercise) {
+      const exVol = sets.reduce((s,e) => s + (e.volume || 0), 0);
+      const maxKg = Math.max(...sets.map(e => e.kg || 0));
+      const prevMax = prHistory[exercise] || 0;
+      const isPR = maxKg > prevMax && prevMax > 0;
+
+      const times = sets.map(e => e.ts).filter(Boolean).sort((a,b)=>a-b);
+      const timeStr = times.length
+        ? (times.length === 1 ? fmtTime(times[0]) : `${fmtTime(times[0])} – ${fmtTime(times[times.length-1])}`)
+        : '';
+
+      const pills = sets.map(e => {
+        let cls = 'cal-set-pill';
+        if (e.kg === maxKg) cls += isPR ? ' pr' : ' top';
+        const rir = e.rir != null ? ` <span style="opacity:0.6;font-size:10px">RIR${esc(e.rir)}</span>` : '';
+        return `<span class="${cls}">${esc(e.kg)}kg × ${esc(e.reps)}${rir}</span>`;
+      }).join('');
+
+      html += `
+        <div class="cal-exercise-card${isPR ? ' has-pr' : ''}">
+          <div class="cal-exercise-head">
+            <div class="cal-exercise-name">${esc(exercise)}${isPR ? ' <span class="pr-badge">PR</span>' : ''}</div>
+            <div class="cal-exercise-meta">${sets.length}セット</div>
+          </div>
+          <div class="cal-sets-row">${pills}</div>
+          <div class="cal-exercise-foot">
+            <span>${timeStr}</span>
+            <span class="vol">${exVol.toLocaleString()} kg</span>
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
   }
+
   if (dayCardio.length) {
-    lines.push(`有酸素: ${dayCardio.map(e => `${e.exercise || 'エアロバイク'} 負荷${e.load}×${e.min}分`).join(' / ')}`);
+    html += '<div class="cal-cardio-section">';
+    for (const c of dayCardio) {
+      html += `
+        <div class="cal-cardio-card">
+          <div class="cal-cardio-title">🚴 ${esc(c.exercise || 'エアロバイク')}</div>
+          <div class="cal-cardio-detail">負荷 ${esc(c.load)} × ${esc(c.min)}分</div>
+        </div>
+      `;
+    }
+    html += '</div>';
   }
-  document.getElementById('cal-detail').textContent = lines.join(' | ');
+
+  panel.className = 'cal-detail-panel';
+  panel.innerHTML = html;
 
   // 部位図を更新
   const worked = new Set(dayLogs.flatMap(e => getMuscles(e.exercise)));
