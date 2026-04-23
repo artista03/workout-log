@@ -3583,5 +3583,15 @@
     "sets": 1,
     "rir": null,
     "volume": 100
+  },
+  {
+    "date": "2026-04-23",
+    "ts": 1776914914463,
+    "exercise": "シュラッグ",
+    "kg": 14,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 140
   }
 ]
