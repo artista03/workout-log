@@ -387,17 +387,27 @@
     .ex-stats-value.rm { color: #ffaa44; }
 
     .ex-history-row {
-      display: flex; gap: 5px; margin-top: 10px; padding-top: 10px;
+      display: flex; flex-direction: column; gap: 6px;
+      margin-top: 10px; padding-top: 10px;
       border-top: 1px dashed #252525;
     }
-    .ex-history-item { flex: 1; text-align: center; }
+    .ex-history-row .ex-history-title {
+      font-size: 10px; color: #888; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+    }
+    .ex-history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; padding: 8px 12px;
+      background: #1a1a1a; border-radius: 8px;
+      border-left: 3px solid #2a2a2a;
+    }
+    .ex-history-item.best { border-left-color: #ff4444; }
     .ex-history-pill {
-      background: #2a0808; color: #ff8888; border: 1px solid #3d1010;
-      padding: 4px 4px; border-radius: 5px; font-size: 11px; font-weight: 700;
+      color: #ff8888; font-size: 14px; font-weight: 800;
       font-variant-numeric: tabular-nums;
     }
-    .ex-history-pill.best { background: #ff4444; color: #fff; border-color: #ff4444; box-shadow: 0 0 6px rgba(255,68,68,0.5); }
-    .ex-history-label { font-size: 9px; color: #444; margin-top: 3px; font-weight: 500; }
+    .ex-history-item.best .ex-history-pill { color: #ff4444; }
+    .ex-history-label { font-size: 11px; color: #555; font-weight: 500; }
 
     /* kg入力時のライブヒント */
     #ex-kg-hint {
@@ -1311,14 +1321,14 @@ function renderExerciseStats(exercise) {
   const maxRepsLog = exLogs.filter(l => l.reps === maxReps).pop();
   const est1rm = Math.round(Math.max(...exLogs.map(l => (l.kg||0) * (1 + (l.reps||0)/30))));
 
-  // 最近5回
-  const recent = exLogs.slice(-5);
-  const recentPills = recent.map(l => {
+  // 最近5回（新しい順に表示）
+  const recent = exLogs.slice(-5).reverse();
+  const recentPills = '<div class="ex-history-title">直近の記録</div>' + recent.map(l => {
     const isBest = l.kg === maxKg;
     return `
-      <div class="ex-history-item">
-        <div class="ex-history-pill${isBest?' best':''}">${esc(l.kg)}×${esc(l.reps)}</div>
-        <div class="ex-history-label">${esc(l.date.slice(5))}</div>
+      <div class="ex-history-item${isBest?' best':''}">
+        <div class="ex-history-pill">${esc(l.kg)}kg × ${esc(l.reps)}回</div>
+        <div class="ex-history-label">${esc(l.date)}</div>
       </div>
     `;
   }).join('');
