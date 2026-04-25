@@ -360,21 +360,31 @@
       margin: 4px 0 10px;
       animation: slideDown 0.25s ease;
     }
-    .ex-stats-grid {
-      display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px;
+    .ex-stats-list { display: flex; flex-direction: column; gap: 8px; }
+    .ex-stats-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px; background: #1a1a1a; border-radius: 8px;
+      border-left: 3px solid #2a2a2a;
     }
-    .ex-stats-item { display: flex; flex-direction: column; gap: 2px; }
+    .ex-stats-row.max { border-left-color: #ff4444; }
+    .ex-stats-row.prev { border-left-color: #ff8888; }
+    .ex-stats-row.rm { border-left-color: #ffaa44; }
+    .ex-stats-row.freq { border-left-color: #888; }
+    .ex-stats-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
     .ex-stats-label {
-      font-size: 10px; color: #666;
-      text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600;
+      font-size: 10px; color: #888;
+      text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700;
     }
+    .ex-stats-sub { font-size: 11px; color: #555; }
     .ex-stats-value {
-      font-size: 16px; font-weight: 800; color: #fff;
+      font-size: 17px; font-weight: 800; color: #fff;
       font-variant-numeric: tabular-nums; line-height: 1.1;
+      text-align: right; white-space: nowrap; flex-shrink: 0;
     }
     .ex-stats-value.max { color: #ff4444; }
     .ex-stats-value.prev { color: #ff8888; }
-    .ex-stats-sub { font-size: 10px; color: #555; }
+    .ex-stats-value.rm { color: #ffaa44; }
 
     .ex-history-row {
       display: flex; gap: 5px; margin-top: 10px; padding-top: 10px;
@@ -1323,26 +1333,34 @@ function renderExerciseStats(exercise) {
     .join(' · ');
 
   card.innerHTML = `
-    <div class="ex-stats-grid">
-      <div class="ex-stats-item">
-        <div class="ex-stats-label">🏆 最高重量</div>
-        <div class="ex-stats-value max">${esc(maxKg)} kg</div>
-        <div class="ex-stats-sub">${esc(maxKgLog.date)} · ${esc(maxKgLog.reps)}回</div>
-      </div>
-      <div class="ex-stats-item">
-        <div class="ex-stats-label">推定 1RM</div>
-        <div class="ex-stats-value">${esc(est1rm)} kg</div>
-        <div class="ex-stats-sub">最多rep ${esc(maxReps)}回 @ ${esc(maxRepsLog.kg)}kg</div>
-      </div>
-      <div class="ex-stats-item">
-        <div class="ex-stats-label">前回</div>
+    <div class="ex-stats-list">
+      <div class="ex-stats-row prev">
+        <div class="ex-stats-left">
+          <div class="ex-stats-label">前回</div>
+          <div class="ex-stats-sub">${esc(last.date)} · ${esc(last.sets||1)}セット</div>
+        </div>
         <div class="ex-stats-value prev">${esc(last.kg)}kg × ${esc(last.reps)}</div>
-        <div class="ex-stats-sub">${esc(last.date)} · ${esc(last.sets||1)}セット</div>
       </div>
-      <div class="ex-stats-item">
-        <div class="ex-stats-label">よく使う重量</div>
+      <div class="ex-stats-row max">
+        <div class="ex-stats-left">
+          <div class="ex-stats-label">🏆 最高重量</div>
+          <div class="ex-stats-sub">${esc(maxKgLog.date)} · ${esc(maxKgLog.reps)}回</div>
+        </div>
+        <div class="ex-stats-value max">${esc(maxKg)} kg</div>
+      </div>
+      <div class="ex-stats-row rm">
+        <div class="ex-stats-left">
+          <div class="ex-stats-label">推定 1RM</div>
+          <div class="ex-stats-sub">最多rep ${esc(maxReps)}回 @ ${esc(maxRepsLog.kg)}kg</div>
+        </div>
+        <div class="ex-stats-value rm">${esc(est1rm)} kg</div>
+      </div>
+      <div class="ex-stats-row freq">
+        <div class="ex-stats-left">
+          <div class="ex-stats-label">よく使う重量</div>
+          <div class="ex-stats-sub">累計 ${exLogs.length} セット</div>
+        </div>
         <div class="ex-stats-value" style="font-size:13px">${esc(topKgs)}</div>
-        <div class="ex-stats-sub">累計 ${exLogs.length} セット</div>
       </div>
     </div>
     <div class="ex-history-row">${recentPills}</div>
