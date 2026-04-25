@@ -3803,5 +3803,15 @@
     "sets": 1,
     "rir": null,
     "volume": 150
+  },
+  {
+    "date": "2026-04-25",
+    "ts": 1777088903172,
+    "exercise": "サイドレイズ",
+    "kg": 14,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 140
   }
 ]
