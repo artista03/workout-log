@@ -123,6 +123,305 @@
     .toast-detail { font-size: 12px; color: #888; margin-top: 2px; }
     .toast-vol { font-size: 13px; color: #ff4444; font-weight: 700; margin-top: 2px; }
 
+    /* 前回 vs 今回 比較ポップアップ */
+    #compare-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.72);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 9998;
+      animation: cmpFadeIn 0.22s ease-out;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #compare-overlay.show { display: flex; }
+    @keyframes cmpFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes cmpPopIn {
+      from { opacity: 0; transform: translateY(20px) scale(0.94); }
+      to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    #compare-card {
+      background: linear-gradient(135deg, #15151c 0%, #1a1010 100%);
+      border: 1px solid #3a2a2a;
+      border-radius: 18px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+      animation: cmpPopIn 0.32s cubic-bezier(.2,.8,.2,1);
+      position: relative;
+      overflow: hidden;
+      width: 100%; max-width: 480px;
+      max-height: 88vh; overflow-y: auto;
+    }
+    #compare-card.pr {
+      border-color: #ffaa00;
+      background: linear-gradient(135deg, #1a1408 0%, #2a1a08 100%);
+      box-shadow: 0 20px 60px rgba(255,170,0,0.25), inset 0 1px 0 rgba(255,200,80,0.08);
+    }
+    #compare-card.pr::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at top right, rgba(255,170,0,0.14), transparent 60%);
+      pointer-events: none;
+    }
+    .cmp-close {
+      position: absolute; top: 10px; right: 12px;
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 50%;
+      color: #888; cursor: pointer; font-size: 16px; line-height: 1;
+      z-index: 2; transition: background 0.15s, color 0.15s;
+    }
+    .cmp-close:hover { background: rgba(255,255,255,0.1); color: #fff; }
+    .cmp-day {
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 10px; border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .cmp-now-day {
+      background: rgba(255,80,80,0.06);
+      border-color: rgba(255,80,80,0.18);
+    }
+    #compare-card.pr .cmp-now-day {
+      background: rgba(255,170,0,0.08);
+      border-color: rgba(255,170,0,0.28);
+    }
+    .cmp-set-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 14px; padding: 4px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+    }
+    .cmp-set-row:last-child { border-bottom: none; }
+    .cmp-set-main { font-weight: 700; color: #ddd; font-feature-settings: 'tnum'; }
+    .cmp-now-day .cmp-set-main { color: #fff; }
+    .cmp-set-sub { font-size: 11px; color: #666; }
+    .cmp-day-summary {
+      margin-top: 6px; padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cmp-summary-row {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px;
+    }
+    .cmp-summary-row .lbl { color: #666; }
+    .cmp-summary-row .val { font-weight: 800; color: #ddd; font-feature-settings: 'tnum'; }
+    .cmp-now-day .cmp-summary-row .val { color: #fff; }
+    .cmp-now-day .cmp-summary-row.total .val { color: #ff8866; font-size: 15px; }
+    #compare-card.pr .cmp-now-day .cmp-summary-row.total .val { color: #ffd066; }
+    .cmp-summary-row .diff {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 800;
+      padding: 1px 7px; border-radius: 999px;
+      margin-left: 6px;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-summary-row .diff.up   { color: #ffaa44; background: rgba(255,150,40,0.14); }
+    .cmp-summary-row .diff.down { color: #ff7777; background: rgba(255,80,80,0.10); }
+    .cmp-summary-row .diff.same { color: #666;    background: rgba(255,255,255,0.04); }
+
+    /* 行ベース：前回 → 今回 */
+    .cmp-axis {
+      display: grid; grid-template-columns: 1fr 32px 1fr;
+      align-items: center; gap: 8px;
+      padding: 4px 4px 10px;
+      border-bottom: 1px dashed rgba(255,255,255,0.06);
+      margin-bottom: 8px;
+    }
+    .cmp-axis-prev, .cmp-axis-now {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .cmp-axis-now { text-align: right; align-items: flex-end; }
+    .cmp-axis-lbl { font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #666; }
+    .cmp-axis-prev .cmp-axis-lbl { color: #888; }
+    .cmp-axis-now  .cmp-axis-lbl { color: #ff8866; }
+    #compare-card.pr .cmp-axis-now .cmp-axis-lbl { color: #ffd066; }
+    .cmp-axis-date { font-size: 13px; font-weight: 700; color: #ddd; font-feature-settings: 'tnum'; }
+    .cmp-axis-spacer { display: none; }
+
+    .cmp-rows {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cmp-row {
+      display: grid;
+      grid-template-columns: 38px 1fr 18px 1fr;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 8px;
+      border-radius: 10px;
+      font-size: 14px;
+      transition: background 0.15s;
+    }
+    .cmp-row + .cmp-row { border-top: 1px dashed rgba(255,255,255,0.05); }
+    .cmp-row.here {
+      background: linear-gradient(90deg, rgba(255,80,80,0.08), rgba(255,80,80,0.14));
+      border: 1px solid rgba(255,80,80,0.35);
+      box-shadow: 0 0 0 1px rgba(255,80,80,0.15) inset;
+      padding: 11px 10px;
+    }
+    #compare-card.pr .cmp-row.here {
+      background: linear-gradient(90deg, rgba(255,170,0,0.08), rgba(255,170,0,0.18));
+      border-color: rgba(255,170,0,0.45);
+    }
+    .cmp-row.extra .cmp-row-prev { color: #555; }
+    .cmp-row-idx {
+      font-size: 11px; color: #666; font-weight: 800;
+      display: flex; flex-direction: column; align-items: center; line-height: 1;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-row.here .cmp-row-idx { color: #ffaa44; }
+    #compare-card.pr .cmp-row.here .cmp-row-idx { color: #ffd066; }
+    .cmp-row-idx-sub { font-size: 8px; color: #555; margin-top: 2px; letter-spacing: 0.05em; }
+    .cmp-row-prev {
+      color: #aaa; font-weight: 700;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-row-arrow {
+      text-align: center; color: #444; font-weight: 700;
+    }
+    .cmp-row-now {
+      color: #fff; font-weight: 800;
+      font-feature-settings: 'tnum';
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    }
+    .cmp-row-now .diff {
+      display: inline-flex; align-items: center;
+      font-size: 11px; font-weight: 800;
+      padding: 1px 7px; border-radius: 999px;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-row-now .diff.up   { color: #ffaa44; background: rgba(255,150,40,0.14); }
+    .cmp-row-now .diff.down { color: #ff7777; background: rgba(255,80,80,0.10); }
+    .cmp-row-now .diff.same { color: #666;    background: rgba(255,255,255,0.04); }
+    .cmp-here-tag {
+      display: inline-block; font-size: 10px; font-weight: 800;
+      padding: 2px 7px; border-radius: 999px;
+      background: #ff4444; color: #fff;
+      letter-spacing: 0.05em;
+    }
+    #compare-card.pr .cmp-here-tag { background: #ffaa00; color: #1a1000; }
+
+    .cmp-footer {
+      margin-top: 12px; padding-top: 10px;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .cmp-foot-cell {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-foot-lbl { color: #666; min-width: 56px; font-size: 11px; letter-spacing: 0.05em; }
+    .cmp-foot-prev { color: #888; font-weight: 700; }
+    .cmp-foot-arrow { color: #444; }
+    .cmp-foot-now { color: #fff; font-weight: 800; }
+    .cmp-foot-cell .diff {
+      display: inline-flex; align-items: center;
+      font-size: 11px; font-weight: 800;
+      padding: 1px 7px; border-radius: 999px;
+      margin-left: 2px;
+    }
+    .cmp-foot-cell .diff.up   { color: #ffaa44; background: rgba(255,150,40,0.14); }
+    .cmp-foot-cell .diff.down { color: #ff7777; background: rgba(255,80,80,0.10); }
+    .cmp-foot-cell .diff.same { color: #666;    background: rgba(255,255,255,0.04); }
+
+    @media (max-width: 380px) {
+      .cmp-row { font-size: 13px; grid-template-columns: 32px 1fr 14px 1fr; gap: 6px; padding: 8px 6px; }
+      .cmp-row-now { gap: 4px; }
+    }
+    .cmp-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 12px; position: relative; z-index: 1;
+    }
+    .cmp-title {
+      font-size: 15px; font-weight: 800; color: #fff;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .cmp-title .cmp-icon { font-size: 18px; }
+    .cmp-tag {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+      color: #ff8866; background: rgba(255,80,80,0.1);
+      padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+      border: 1px solid rgba(255,80,80,0.2);
+    }
+    #compare-card.pr .cmp-tag {
+      color: #ffd066; background: rgba(255,170,0,0.15);
+      border-color: rgba(255,170,0,0.35);
+    }
+    .cmp-grid {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 10px 12px;
+      align-items: center;
+      position: relative; z-index: 1;
+    }
+    .cmp-side {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .cmp-label-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 11px; color: #666; letter-spacing: 0.05em;
+      margin-bottom: 2px; text-transform: uppercase;
+    }
+    .cmp-label-row .cmp-date { color: #555; font-size: 10px; text-transform: none; letter-spacing: 0; }
+    .cmp-prev .cmp-label { color: #888; }
+    .cmp-now .cmp-label { color: #ff8866; }
+    #compare-card.pr .cmp-now .cmp-label { color: #ffd066; }
+    .cmp-stat {
+      display: flex; flex-direction: column;
+      padding: 8px 10px; border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+    .cmp-now .cmp-stat {
+      background: rgba(255,80,80,0.06);
+      border-color: rgba(255,80,80,0.15);
+    }
+    #compare-card.pr .cmp-now .cmp-stat {
+      background: rgba(255,170,0,0.08);
+      border-color: rgba(255,170,0,0.22);
+    }
+    .cmp-stat-cap {
+      font-size: 10px; color: #555; letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .cmp-stat-val {
+      font-size: 17px; font-weight: 800; color: #fff;
+      font-feature-settings: 'tnum'; letter-spacing: -0.01em;
+      margin-top: 1px;
+    }
+    .cmp-prev .cmp-stat-val { color: #aaa; font-weight: 700; }
+    .cmp-stat-diff {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 800; margin-top: 4px;
+      padding: 2px 7px; border-radius: 999px;
+      align-self: flex-start;
+      font-feature-settings: 'tnum';
+    }
+    .cmp-stat-diff.up   { color: #ffaa44; background: rgba(255,150,40,0.12); }
+    .cmp-stat-diff.down { color: #ff7777; background: rgba(255,80,80,0.10); }
+    .cmp-stat-diff.same { color: #666;    background: rgba(255,255,255,0.04); }
+    .cmp-arrow {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; color: #444;
+      align-self: stretch;
+      padding: 0 2px;
+    }
+    .cmp-arrow svg { width: 18px; height: auto; }
+    .cmp-first {
+      grid-column: 1 / -1;
+      text-align: center; padding: 18px 8px 6px;
+      color: #aaa; font-size: 13px; line-height: 1.6;
+    }
+    .cmp-first strong { color: #ff8866; font-weight: 800; }
+    @media (max-width: 380px) {
+      .cmp-stat-val { font-size: 15px; }
+      .cmp-grid { gap: 8px 8px; }
+      .cmp-arrow { font-size: 18px; }
+    }
+
     /* PR バッジ */
     .pr-badge {
       display: inline-block;
@@ -426,27 +725,8 @@
     /* 前回重量ヒント（旧：互換のため残す） */
     #prev-record-hint { display: none; }
 
-    /* セット間タイマー */
-    #rest-timer {
-      position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-      background: #1a1a1a; border: 2px solid #ff4444;
-      border-radius: 18px; padding: 14px 22px;
-      display: none; flex-direction: column; align-items: center;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.75);
-      z-index: 9998; min-width: 230px;
-    }
-    #rest-timer.show { display: flex; }
-    .timer-label { font-size: 11px; color: #888; margin-bottom: 4px; letter-spacing: 1px; text-transform: uppercase; }
-    .timer-count { font-size: 52px; font-weight: 900; color: #ff4444; line-height: 1; font-variant-numeric: tabular-nums; }
-    .timer-count.warning { color: #ff8800; }
-    .timer-count.done { color: #44cc44; font-size: 34px; }
-    .timer-presets { display: flex; gap: 6px; margin-top: 10px; }
-    .timer-btn-preset {
-      background: #2a2a2a; border: 1px solid #444;
-      border-radius: 8px; color: #888; font-size: 12px;
-      padding: 5px 13px; cursor: pointer;
-    }
-    .timer-btn-preset:hover { border-color: #ff4444; color: #fff; }
+    /* セット間タイマー（削除済み） */
+    #rest-timer { display: none !important; }
     .timer-btn-stop {
       background: none; border: 1px solid #333;
       border-radius: 8px; color: #555; font-size: 12px;
@@ -487,6 +767,11 @@
       <div class="streak-label">日連続トレーニング中</div>
     </div>
     <div class="streak-right" id="streak-sub"></div>
+  </div>
+
+  <!-- 前回 vs 今回 比較ポップアップ -->
+  <div id="compare-overlay" onclick="if(event.target===this) closeCompareCard()">
+    <div id="compare-card"></div>
   </div>
 
   <!-- チアアップ（筋トレ） -->
@@ -784,18 +1069,6 @@
 
   <p class="status" id="status">読み込み中...</p>
   <button class="secondary" onclick="resetSetup()">設定リセット</button>
-</div>
-
-<!-- セット間タイマー -->
-<div id="rest-timer">
-  <div class="timer-label">インターバル</div>
-  <div class="timer-count" id="timer-count">90</div>
-  <div class="timer-presets">
-    <button class="timer-btn-preset" onclick="startRestTimer(60)">60秒</button>
-    <button class="timer-btn-preset" onclick="startRestTimer(90)">90秒</button>
-    <button class="timer-btn-preset" onclick="startRestTimer(120)">120秒</button>
-  </div>
-  <button class="timer-btn-stop" onclick="stopRestTimer()">タイマーを閉じる</button>
 </div>
 
 <!-- 記録トースト -->
@@ -1450,9 +1723,6 @@ async function addLog() {
   document.getElementById('sets').value = '1';
   document.getElementById('rir').value = '';
 
-  // インターバルタイマー開始
-  startRestTimer(90);
-
   // 記録トースト表示
   const exAllForPR = logs.filter(l => l.exercise === entry.exercise);
   const prevLogs   = exAllForPR.slice(0, -1);
@@ -1461,6 +1731,7 @@ async function addLog() {
   const current1rm = Math.round(entry.kg * (1 + entry.reps / 30));
   const isPR = (maxKgForPR > 0 && entry.kg > maxKgForPR) || (maxRmForPR > 0 && current1rm > maxRmForPR);
   showRecordToast(entry, isPR);
+  showCompareCard(entry, isPR);
 
   // 未知種目のサジェスト
   if (!getExerciseAliases()[entry.exercise] && getMuscles(entry.exercise).length === 0) {
@@ -1657,6 +1928,135 @@ function showRecordToast(entry, isPR) {
   toast.classList.add('show');
   if (_toastTimer) clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ── 前回 vs 今回 比較ポップアップ（前回ログ一覧＋今回の位置） ──
+function closeCompareCard() {
+  const ov = document.getElementById('compare-overlay');
+  if (ov) ov.classList.remove('show');
+}
+
+function showCompareCard(entry, isPR) {
+  const overlay = document.getElementById('compare-overlay');
+  const card    = document.getElementById('compare-card');
+  if (!overlay || !card) return;
+
+  const todayStr = entry.date;
+
+  // 同種目を日毎にグループ化
+  const sameAll = logs.filter(l => l.exercise === entry.exercise);
+  const byDate  = {};
+  for (const l of sameAll) (byDate[l.date] ||= []).push(l);
+
+  const todayLogs = (byDate[todayStr] || []).slice().sort((a,b) => (a.ts||0)-(b.ts||0));
+  const prevDate  = Object.keys(byDate).filter(d => d !== todayStr).sort().pop() || null;
+  const prevLogs  = prevDate ? byDate[prevDate].slice().sort((a,b) => (a.ts||0)-(b.ts||0)) : [];
+
+  // 今回追加した entry が今日の何セット目か（位置）
+  const nowIdx = Math.max(0, todayLogs.findIndex(l => l.ts === entry.ts));
+  const currentPos = nowIdx + 1; // 1始まり
+
+  card.classList.toggle('pr', !!isPR);
+
+  // 初回記録モード
+  if (!prevDate) {
+    card.innerHTML = `
+      <button class="cmp-close" onclick="closeCompareCard()" aria-label="閉じる">×</button>
+      <div class="cmp-header">
+        <div class="cmp-title"><span class="cmp-icon">✨</span>${esc(entry.exercise)}</div>
+        <div class="cmp-tag">初挑戦</div>
+      </div>
+      <div class="cmp-first" style="grid-column:unset">
+        🎉 <strong>${esc(entry.exercise)}</strong> の初記録！<br>
+        ${esc(entry.kg)}kg × ${esc(entry.reps)}回 × ${esc(entry.sets)}セット<br>
+        <span style="font-size:11px;color:#666">ここから積み上げていこう</span>
+      </div>
+    `;
+    overlay.classList.add('show');
+    return;
+  }
+
+  const diffPill = (d, unit='') => {
+    if (d > 0) return `<span class="diff up">▲ +${d.toLocaleString()}${unit}</span>`;
+    if (d < 0) return `<span class="diff down">▼ ${d.toLocaleString()}${unit}</span>`;
+    return `<span class="diff same">＝</span>`;
+  };
+
+  // 前回ログを行ベースで展開し、今回の同位置セットと並列で表示
+  const maxRows = Math.max(prevLogs.length, todayLogs.length);
+  const rowsHtml = [];
+  for (let i = 0; i < maxRows; i++) {
+    const p = prevLogs[i];
+    const n = todayLogs[i];
+    const isHere = (i === nowIdx); // 今回追加したセットの位置をハイライト
+    const prevTxt = p ? `${esc(p.kg)}kg × ${esc(p.reps)}${(p.sets||1)>1?` × ${esc(p.sets)}`:''}` : `<span style="color:#444">―</span>`;
+    let nowTxt;
+    let diff = '';
+    if (n) {
+      nowTxt = `${esc(n.kg)}kg × ${esc(n.reps)}${(n.sets||1)>1?` × ${esc(n.sets)}`:''}`;
+      if (p) diff = diffPill(n.kg - p.kg, 'kg');
+    } else {
+      nowTxt = `<span style="color:#555;font-weight:600">未消化</span>`;
+    }
+    rowsHtml.push(`
+      <div class="cmp-row ${isHere ? 'here' : ''} ${!p && n ? 'extra' : ''}">
+        <div class="cmp-row-idx">${i+1}<span class="cmp-row-idx-sub">セット目</span></div>
+        <div class="cmp-row-prev">${prevTxt}</div>
+        <div class="cmp-row-arrow">→</div>
+        <div class="cmp-row-now">
+          ${nowTxt}
+          ${diff}
+          ${isHere ? '<span class="cmp-here-tag">今ココ</span>' : ''}
+        </div>
+      </div>
+    `);
+  }
+
+  // サマリー
+  const sumDay = (rows) => ({
+    vol:  rows.reduce((s,r) => s + (r.volume || (r.kg||0)*(r.reps||0)*(r.sets||1)), 0),
+    sets: rows.reduce((s,r) => s + (r.sets||1), 0),
+    maxKg: Math.max(0, ...rows.map(r => r.kg||0)),
+  });
+  const ps = sumDay(prevLogs), ns = sumDay(todayLogs);
+
+  card.innerHTML = `
+    <button class="cmp-close" onclick="closeCompareCard()" aria-label="閉じる">×</button>
+    <div class="cmp-header">
+      <div class="cmp-title">
+        <span class="cmp-icon">${isPR ? '🏆' : '🔥'}</span>${esc(entry.exercise)}
+      </div>
+      <div class="cmp-tag">${isPR ? 'PR 更新！' : `${currentPos}セット目`}</div>
+    </div>
+
+    <div class="cmp-axis">
+      <div class="cmp-axis-prev"><span class="cmp-axis-lbl">前回</span><span class="cmp-axis-date">${esc(prevDate)}</span></div>
+      <div class="cmp-axis-spacer"></div>
+      <div class="cmp-axis-now"><span class="cmp-axis-lbl">今回</span><span class="cmp-axis-date">${esc(todayStr)}</span></div>
+    </div>
+
+    <div class="cmp-rows">
+      ${rowsHtml.join('')}
+    </div>
+
+    <div class="cmp-footer">
+      <div class="cmp-foot-cell">
+        <span class="cmp-foot-lbl">合計vol</span>
+        <span class="cmp-foot-prev">${ps.vol.toLocaleString()}</span>
+        <span class="cmp-foot-arrow">→</span>
+        <span class="cmp-foot-now">${ns.vol.toLocaleString()}</span>
+        ${diffPill(ns.vol - ps.vol)}
+      </div>
+      <div class="cmp-foot-cell">
+        <span class="cmp-foot-lbl">最大kg</span>
+        <span class="cmp-foot-prev">${ps.maxKg}kg</span>
+        <span class="cmp-foot-arrow">→</span>
+        <span class="cmp-foot-now">${ns.maxKg}kg</span>
+        ${diffPill(ns.maxKg - ps.maxKg, 'kg')}
+      </div>
+    </div>
+  `;
+  overlay.classList.add('show');
 }
 
 function showCheerLoading() {
@@ -2789,39 +3189,6 @@ function calClick(d) {
     });
   }
   document.getElementById('body-svg-wrap').style.display = 'flex';
-}
-
-// ── セット間タイマー ─────────────────────────────
-let _restTimerInterval = null;
-let _restTimerRemain   = 0;
-
-function startRestTimer(sec) {
-  if (_restTimerInterval) clearInterval(_restTimerInterval);
-  _restTimerRemain = sec;
-  const timerEl = document.getElementById('rest-timer');
-  const countEl = document.getElementById('timer-count');
-  timerEl.classList.add('show');
-  countEl.className = 'timer-count';
-  countEl.textContent = sec;
-
-  _restTimerInterval = setInterval(() => {
-    _restTimerRemain--;
-    if (_restTimerRemain <= 0) {
-      clearInterval(_restTimerInterval);
-      _restTimerInterval = null;
-      countEl.className = 'timer-count done';
-      countEl.textContent = '次のセットへ！';
-      setTimeout(() => timerEl.classList.remove('show'), 2500);
-    } else {
-      countEl.className = 'timer-count' + (_restTimerRemain <= 10 ? ' warning' : '');
-      countEl.textContent = _restTimerRemain;
-    }
-  }, 1000);
-}
-
-function stopRestTimer() {
-  if (_restTimerInterval) { clearInterval(_restTimerInterval); _restTimerInterval = null; }
-  document.getElementById('rest-timer').classList.remove('show');
 }
 
 // ── 種目別記録推移グラフ ─────────────────────────
