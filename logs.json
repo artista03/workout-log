@@ -4303,5 +4303,15 @@
     "sets": 1,
     "rir": null,
     "volume": 150
+  },
+  {
+    "date": "2026-04-27",
+    "ts": 1777248765024,
+    "exercise": "ケーブルプレスダウン",
+    "kg": 20,
+    "reps": 5,
+    "sets": 1,
+    "rir": null,
+    "volume": 100
   }
 ]
