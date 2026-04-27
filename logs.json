@@ -4353,5 +4353,15 @@
     "sets": 1,
     "rir": null,
     "volume": 780
+  },
+  {
+    "date": "2026-04-27",
+    "ts": 1777251469728,
+    "exercise": "ローロー",
+    "kg": 70,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 700
   }
 ]
