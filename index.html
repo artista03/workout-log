@@ -1714,13 +1714,8 @@ async function addLog() {
   renderAll();
   renderCalendar();
 
-  // 入力リセット
-  document.getElementById('exercise-select').value = '';
-  document.getElementById('exercise-new').value = '';
-  document.getElementById('exercise-new-row').style.display = 'none';
-  document.getElementById('kg').value = '';
-  document.getElementById('reps').value = '';
-  document.getElementById('sets').value = '1';
+  // 入力リセット（種目・kg・reps・setsは維持。同じメニューを繰り返し記録できるよう）
+  // RIRだけクリア（セット毎に変わる主観値のため）
   document.getElementById('rir').value = '';
 
   // 記録トースト表示
