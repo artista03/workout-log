@@ -4713,5 +4713,15 @@
     "sets": 1,
     "rir": null,
     "volume": 200
+  },
+  {
+    "date": "2026-04-30",
+    "ts": 1777502563156,
+    "exercise": "ダンベルカール",
+    "kg": 14,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 140
   }
 ]
