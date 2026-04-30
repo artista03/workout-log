@@ -4873,5 +4873,15 @@
     "sets": 1,
     "rir": null,
     "volume": 300
+  },
+  {
+    "date": "2026-04-30",
+    "ts": 1777515535578,
+    "exercise": "ロータリートーソー",
+    "kg": 10,
+    "reps": 20,
+    "sets": 1,
+    "rir": null,
+    "volume": 200
   }
 ]
