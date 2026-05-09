@@ -6143,5 +6143,15 @@
     "sets": 1,
     "rir": null,
     "volume": 300
+  },
+  {
+    "date": "2026-05-09",
+    "ts": 1778296069437,
+    "exercise": "ペクトラル",
+    "kg": 25,
+    "reps": 30,
+    "sets": 1,
+    "rir": null,
+    "volume": 750
   }
 ]
