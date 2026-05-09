@@ -6093,5 +6093,15 @@
     "sets": 1,
     "rir": null,
     "volume": 250
+  },
+  {
+    "date": "2026-05-09",
+    "ts": 1778294896822,
+    "exercise": "スミスショルダープレス",
+    "kg": 45,
+    "reps": 1,
+    "sets": 1,
+    "rir": null,
+    "volume": 45
   }
 ]
