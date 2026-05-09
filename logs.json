@@ -6343,5 +6343,15 @@
     "sets": 1,
     "rir": null,
     "volume": 800
+  },
+  {
+    "date": "2026-05-10",
+    "ts": 1778369725725,
+    "exercise": "アブダクター",
+    "kg": 40,
+    "reps": 30,
+    "sets": 1,
+    "rir": null,
+    "volume": 1200
   }
 ]
