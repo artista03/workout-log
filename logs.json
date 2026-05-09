@@ -6133,5 +6133,15 @@
     "sets": 1,
     "rir": null,
     "volume": 500
+  },
+  {
+    "date": "2026-05-09",
+    "ts": 1778295518802,
+    "exercise": "ローワーバック",
+    "kg": 20,
+    "reps": 15,
+    "sets": 1,
+    "rir": null,
+    "volume": 300
   }
 ]
