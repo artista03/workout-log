@@ -6523,5 +6523,15 @@
     "sets": 1,
     "rir": null,
     "volume": 375
+  },
+  {
+    "date": "2026-05-10",
+    "ts": 1778372362090,
+    "exercise": "フロントラッドプル",
+    "kg": 30,
+    "reps": 15,
+    "sets": 1,
+    "rir": null,
+    "volume": 450
   }
 ]
