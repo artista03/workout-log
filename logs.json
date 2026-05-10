@@ -6463,5 +6463,15 @@
     "sets": 1,
     "rir": null,
     "volume": 450
+  },
+  {
+    "date": "2026-05-10",
+    "ts": 1778371380230,
+    "exercise": "アダクター",
+    "kg": 15,
+    "reps": 30,
+    "sets": 1,
+    "rir": null,
+    "volume": 450
   }
 ]
