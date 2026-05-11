@@ -6623,5 +6623,15 @@
     "sets": 1,
     "rir": null,
     "volume": 200
+  },
+  {
+    "date": "2026-05-11",
+    "ts": 1778467242520,
+    "exercise": "ロータリートーソ",
+    "kg": 10,
+    "reps": 20,
+    "sets": 1,
+    "rir": null,
+    "volume": 200
   }
 ]
