@@ -6963,5 +6963,15 @@
     "sets": 1,
     "rir": null,
     "volume": 120
+  },
+  {
+    "date": "2026-05-13",
+    "ts": 1778637091824,
+    "exercise": "リバースカール",
+    "kg": 12,
+    "reps": 20,
+    "sets": 1,
+    "rir": null,
+    "volume": 240
   }
 ]
