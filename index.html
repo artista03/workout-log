@@ -740,6 +740,62 @@
       padding: 5px 14px; cursor: pointer; margin-top: 8px;
     }
     .timer-btn-stop:hover { border-color: #666; color: #888; }
+
+    /* 日付編集モーダル */
+    #edit-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.78);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      z-index: 10000;
+      align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    #edit-overlay.show { display: flex; }
+    #edit-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 14px;
+      padding: 18px;
+      width: 100%; max-width: 420px;
+      max-height: 88vh; overflow-y: auto;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    }
+    .edit-title { font-size: 14px; color: #ff4444; margin-bottom: 4px; font-weight: 800; letter-spacing: 0.5px; }
+    .edit-sub { font-size: 12px; color: #666; margin-bottom: 14px; }
+    .edit-row { display: flex; gap: 8px; margin-bottom: 10px; }
+    .edit-row label { font-size: 11px; color: #888; display: block; margin-bottom: 4px; }
+    .edit-row > div { flex: 1; }
+    #edit-card select, #edit-card input {
+      background: #2a2a2a; border: 1px solid #333;
+      border-radius: 8px; color: #fff; font-size: 16px;
+      padding: 10px 12px; width: 100%;
+    }
+    .edit-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .edit-actions button {
+      flex: 1; padding: 12px;
+      border: none; border-radius: 8px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+    }
+    .edit-btn-save   { background: #ff4444; color: #fff; }
+    .edit-btn-save:active { background: #cc3333; }
+    .edit-btn-del    { background: #2a1a1a; color: #ff6666; border: 1px solid #663333 !important; }
+    .edit-btn-cancel { background: #2a2a2a; color: #888; }
+
+    /* セットpillを編集できることを示す */
+    .cal-set-pill { cursor: pointer; transition: transform 0.1s, background 0.15s; }
+    .cal-set-pill:active { transform: scale(0.95); }
+
+    /* 日付編集用ボタン */
+    .cal-add-menu-btn {
+      width: 100%; padding: 11px;
+      background: #2a2a2a; color: #ff8866;
+      border: 1px dashed #663333; border-radius: 10px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      margin-top: 12px;
+    }
+    .cal-add-menu-btn:active { background: #331a1a; }
   </style>
 </head>
 <body>
@@ -1076,6 +1132,11 @@
 
   <p class="status" id="status">読み込み中...</p>
   <button class="secondary" onclick="resetSetup()">設定リセット</button>
+</div>
+
+<!-- 日付編集モーダル -->
+<div id="edit-overlay" onclick="if(event.target===this) closeEditModal()">
+  <div id="edit-card"></div>
 </div>
 
 <!-- 記録トースト -->
@@ -1752,6 +1813,178 @@ async function addLog() {
     })
   ]);
   showCheer(cheer);
+}
+
+// ── 日付編集モーダル ─────────────────────────────
+function closeEditModal() {
+  document.getElementById('edit-overlay').classList.remove('show');
+  document.getElementById('edit-card').innerHTML = '';
+}
+
+function openEditEntryModal(ts) {
+  const entry = logs.find(l => l.ts === ts);
+  if (!entry) { alert('記録が見つかりません'); return; }
+  const card = document.getElementById('edit-card');
+  card.innerHTML = `
+    <div class="edit-title">記録を編集</div>
+    <div class="edit-sub">${esc(entry.date)} ・ ${esc(entry.exercise)}</div>
+    <div class="edit-row">
+      <div>
+        <label>kg</label>
+        <input type="number" id="edit-kg" step="0.5" min="0" value="${esc(entry.kg)}">
+      </div>
+      <div>
+        <label>回数</label>
+        <input type="number" id="edit-reps" min="1" value="${esc(entry.reps)}">
+      </div>
+      <div>
+        <label>セット</label>
+        <input type="number" id="edit-sets" min="1" value="${esc(entry.sets || 1)}">
+      </div>
+    </div>
+    <div class="edit-row">
+      <div>
+        <label>RIR（任意 0-5）</label>
+        <input type="number" id="edit-rir" min="0" max="5" step="1" value="${entry.rir != null ? esc(entry.rir) : ''}">
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="edit-btn-del"    onclick="deleteEntryFromModal(${Number(ts)})">削除</button>
+      <button class="edit-btn-cancel" onclick="closeEditModal()">キャンセル</button>
+      <button class="edit-btn-save"   onclick="saveEditedEntry(${Number(ts)})">保存</button>
+    </div>
+  `;
+  document.getElementById('edit-overlay').classList.add('show');
+}
+
+async function saveEditedEntry(ts) {
+  const entry = logs.find(l => l.ts === ts);
+  if (!entry) { alert('記録が見つかりません'); return; }
+  const kg   = parseFloat(document.getElementById('edit-kg').value);
+  const reps = parseInt(document.getElementById('edit-reps').value);
+  const sets = parseInt(document.getElementById('edit-sets').value) || 1;
+  const rirRaw = document.getElementById('edit-rir').value;
+  const rir = rirRaw === '' ? null : Math.max(0, Math.min(5, parseInt(rirRaw)));
+  if (!kg || !reps) { alert('kgと回数を入力してください'); return; }
+  entry.kg = kg;
+  entry.reps = reps;
+  entry.sets = sets;
+  entry.rir = rir;
+  entry.volume = kg * reps * sets;
+  closeEditModal();
+  renderAll();
+  renderCalendar();
+  await saveLogs().then(() => {
+    document.getElementById('status').textContent = '更新完了 ✓';
+  }).catch(e => {
+    document.getElementById('status').textContent = '保存エラー: ' + e.message;
+  });
+}
+
+async function deleteEntryFromModal(ts) {
+  if (!confirm('この記録を削除しますか？')) return;
+  const idx = logs.findIndex(l => l.ts === ts);
+  if (idx < 0) return;
+  logs.splice(idx, 1);
+  closeEditModal();
+  renderAll();
+  renderCalendar();
+  await saveLogs([ts]).then(() => {
+    document.getElementById('status').textContent = '削除完了 ✓';
+  }).catch(e => {
+    document.getElementById('status').textContent = '削除エラー: ' + e.message;
+  });
+}
+
+function openAddEntryModal(date) {
+  const list = getExerciseList();
+  const options = list.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join('');
+  const card = document.getElementById('edit-card');
+  card.innerHTML = `
+    <div class="edit-title">メニューを追加</div>
+    <div class="edit-sub">${esc(date)}</div>
+    <div class="edit-row">
+      <div>
+        <label>種目</label>
+        <select id="add-exercise">
+          <option value="">種目を選ぶ</option>
+          ${options}
+          <option value="__new__">＋ 新しい種目</option>
+        </select>
+      </div>
+    </div>
+    <div class="edit-row" id="add-new-row" style="display:none">
+      <div>
+        <label>新しい種目名</label>
+        <input type="text" id="add-exercise-new" placeholder="例：ベンチプレス">
+      </div>
+    </div>
+    <div class="edit-row">
+      <div>
+        <label>kg</label>
+        <input type="number" id="add-kg" step="0.5" min="0" placeholder="kg">
+      </div>
+      <div>
+        <label>回数</label>
+        <input type="number" id="add-reps" min="1" placeholder="回数">
+      </div>
+      <div>
+        <label>セット</label>
+        <input type="number" id="add-sets" min="1" value="1">
+      </div>
+    </div>
+    <div class="edit-row">
+      <div>
+        <label>RIR（任意 0-5）</label>
+        <input type="number" id="add-rir" min="0" max="5" step="1" placeholder="任意">
+      </div>
+    </div>
+    <div class="edit-actions">
+      <button class="edit-btn-cancel" onclick="closeEditModal()">キャンセル</button>
+      <button class="edit-btn-save"   onclick="saveNewEntryForDate('${date}')">追加</button>
+    </div>
+  `;
+  document.getElementById('add-exercise').addEventListener('change', function() {
+    document.getElementById('add-new-row').style.display = this.value === '__new__' ? 'flex' : 'none';
+  });
+  document.getElementById('edit-overlay').classList.add('show');
+}
+
+async function saveNewEntryForDate(date) {
+  const sel = document.getElementById('add-exercise').value;
+  let exercise = sel;
+  if (sel === '__new__') {
+    exercise = (document.getElementById('add-exercise-new').value || '').trim();
+  }
+  const kg   = parseFloat(document.getElementById('add-kg').value);
+  const reps = parseInt(document.getElementById('add-reps').value);
+  const sets = parseInt(document.getElementById('add-sets').value) || 1;
+  const rirRaw = document.getElementById('add-rir').value;
+  const rir = rirRaw === '' ? null : Math.max(0, Math.min(5, parseInt(rirRaw)));
+  if (!exercise) { alert('種目を選んでください'); return; }
+  if (!kg || !reps) { alert('kgと回数を入力してください'); return; }
+
+  // 新種目をリストに登録
+  const list = getExerciseList();
+  if (!list.includes(exercise)) {
+    saveExerciseList([...list, exercise]);
+    updateExerciseSelect();
+  }
+
+  // tsはその日の正午起点＋既存記録数*60秒（一意性確保 & 時刻表示が自然になる）
+  const sameDay = logs.filter(l => l.date === date).length;
+  const ts = new Date(date + 'T12:00:00').getTime() + sameDay * 60000;
+
+  const entry = { date, ts, exercise, kg, reps, sets, rir, volume: kg * reps * sets };
+  logs.push(entry);
+  closeEditModal();
+  renderAll();
+  renderCalendar();
+  await saveLogs().then(() => {
+    document.getElementById('status').textContent = '追加完了 ✓';
+  }).catch(e => {
+    document.getElementById('status').textContent = '保存エラー: ' + e.message;
+  });
 }
 
 // ── 削除 ─────────────────────────────────────────
@@ -3052,7 +3285,8 @@ function calClick(d) {
 
   if (!dayLogs.length && !dayCardio.length) {
     panel.className = 'cal-detail-panel empty-state';
-    panel.innerHTML = 'この日の記録はなし';
+    panel.innerHTML = `<div>この日の記録はなし</div>
+      <button class="cal-add-menu-btn" style="margin-top:14px" onclick="openAddEntryModal('${date}')">＋ この日にメニューを追加</button>`;
     document.getElementById('body-svg-wrap').style.display = 'none';
     return;
   }
@@ -3116,7 +3350,7 @@ function calClick(d) {
         let cls = 'cal-set-pill';
         if (e.kg === maxKg) cls += isPR ? ' pr' : ' top';
         const rir = e.rir != null ? ` <span style="opacity:0.6;font-size:10px">RIR${esc(e.rir)}</span>` : '';
-        return `<span class="${cls}">${esc(e.kg)}kg × ${esc(e.reps)}${rir}</span>`;
+        return `<span class="${cls}" onclick="openEditEntryModal(${Number(e.ts)})" title="タップで編集">${esc(e.kg)}kg × ${esc(e.reps)}${rir}</span>`;
       }).join('');
 
       html += `
@@ -3148,6 +3382,9 @@ function calClick(d) {
     }
     html += '</div>';
   }
+
+  // メニュー追加ボタン（過去日付にも追加できる）
+  html += `<button class="cal-add-menu-btn" onclick="openAddEntryModal('${date}')">＋ この日にメニューを追加</button>`;
 
   panel.className = 'cal-detail-panel';
   panel.innerHTML = html;
