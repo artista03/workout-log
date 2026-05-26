@@ -8253,5 +8253,15 @@
     "sets": 1,
     "rir": null,
     "volume": 200
+  },
+  {
+    "date": "2026-05-27",
+    "ts": 1779839713381,
+    "exercise": "プリーチャーカール",
+    "kg": 15,
+    "reps": 16,
+    "sets": 1,
+    "rir": null,
+    "volume": 240
   }
 ]
