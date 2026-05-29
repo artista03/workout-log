@@ -946,6 +946,18 @@
         </div>
       </div>
     </div>
+
+    <div class="card">
+      <h2>📋 Gemini用テキスト出力</h2>
+      <div style="font-size:12px;color:#888;margin-bottom:10px">クリックでクリップボードにコピー → Geminiに貼り付け</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button onclick="exportForGemini('today')" style="background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;text-align:left">📅 今日のログ</button>
+        <button onclick="exportForGemini('week')" style="background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;text-align:left">📊 今週（直近7日）</button>
+        <button onclick="exportForGemini('month30')" style="background:#2a2a2a;color:#fff;border:1px solid #444;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;text-align:left">📈 直近30日レポート（おすすめ）</button>
+        <button onclick="exportForGemini('all')" style="background:#1a3a1a;color:#fff;border:1px solid #44cc44;border-radius:8px;padding:10px;font-size:14px;cursor:pointer;text-align:left">🗂️ 全データ取得</button>
+      </div>
+      <div id="export-toast" style="display:none;margin-top:10px;padding:8px 12px;background:#1a3a1a;border:1px solid #44cc44;border-radius:6px;font-size:13px;color:#aaffaa"></div>
+    </div>
   </div>
 
   <!-- 有酸素入力 -->
@@ -3540,6 +3552,135 @@ if (GH_TOKEN && GEMINI_KEY) {
   showMain();
 } else {
   document.getElementById('setup-screen').style.display = 'block';
+}
+
+// ── Gemini用テキスト出力 ────────────────────────
+function exportForGemini(scope) {
+  const todayStr = today();
+  const now = new Date(todayStr + 'T00:00:00');
+  const daysAgo = (n) => {
+    const d = new Date(now); d.setDate(d.getDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // 期間フィルタ
+  let fromDate;
+  if (scope === 'today')   fromDate = todayStr;
+  else if (scope === 'week')    fromDate = daysAgo(6);
+  else if (scope === 'month30') fromDate = daysAgo(29);
+  else                          fromDate = '0000-00-00'; // all
+
+  const sLogs = (logs || []).filter(l => l.date >= fromDate).sort((a,b)=>a.ts-b.ts);
+  const cLogs = (cardioLogs || []).filter(l => l.date >= fromDate).sort((a,b)=>(a.ts||0)-(b.ts||0));
+  const wLogs = (weightLogs || []).filter(l => l.date >= fromDate);
+
+  // 日別グルーピング
+  const byDate = {};
+  sLogs.forEach(l => {
+    if (!byDate[l.date]) byDate[l.date] = { strength: [], cardio: [], weight: null };
+    byDate[l.date].strength.push(l);
+  });
+  cLogs.forEach(l => {
+    if (!byDate[l.date]) byDate[l.date] = { strength: [], cardio: [], weight: null };
+    byDate[l.date].cardio.push(l);
+  });
+  wLogs.forEach(l => {
+    if (!byDate[l.date]) byDate[l.date] = { strength: [], cardio: [], weight: null };
+    // 同日複数あれば平均
+    if (byDate[l.date].weight == null) byDate[l.date].weight = [];
+    byDate[l.date].weight.push(l.kg);
+  });
+
+  const dates = Object.keys(byDate).sort();
+  let md = '';
+
+  // ヘッダ
+  const scopeLabel = {today:'今日', week:'直近7日', month30:'直近30日', all:'全期間'}[scope];
+  md += `# 筋トレ・有酸素ログ（${scopeLabel}）\n`;
+  md += `生成日: ${todayStr}\n`;
+  if (dates.length > 0) md += `期間: ${dates[0]} 〜 ${dates[dates.length-1]}（${dates.length}日分）\n`;
+  md += `\n`;
+
+  // 直近30日 or 全期間ならサマリー追加
+  if (scope === 'month30' || scope === 'all') {
+    // 種目別最大重量・総セッション
+    const exStats = {};
+    sLogs.forEach(l => {
+      if (!exStats[l.exercise]) exStats[l.exercise] = { maxKg:0, totalVol:0, sessions:new Set(), lastDate:'' };
+      exStats[l.exercise].maxKg = Math.max(exStats[l.exercise].maxKg, l.kg);
+      exStats[l.exercise].totalVol += (l.volume || l.kg*l.reps*l.sets);
+      exStats[l.exercise].sessions.add(l.date);
+      if (l.date > exStats[l.exercise].lastDate) exStats[l.exercise].lastDate = l.date;
+    });
+    const exArr = Object.entries(exStats).sort((a,b)=>b[1].totalVol-a[1].totalVol);
+    if (exArr.length > 0) {
+      md += `## 種目別サマリー\n`;
+      exArr.forEach(([ex, s]) => {
+        md += `- ${ex}: 最大${s.maxKg}kg / 総ボリューム${s.totalVol.toLocaleString()}kg / ${s.sessions.size}セッション / 最終${s.lastDate}\n`;
+      });
+      md += `\n`;
+    }
+
+    // 体重推移
+    if (wLogs.length > 0) {
+      const wByDate = {};
+      wLogs.forEach(l => { if (!wByDate[l.date]) wByDate[l.date]=[]; wByDate[l.date].push(l.kg); });
+      const wDates = Object.keys(wByDate).sort();
+      const first = (wByDate[wDates[0]].reduce((a,b)=>a+b,0) / wByDate[wDates[0]].length).toFixed(1);
+      const last = (wByDate[wDates[wDates.length-1]].reduce((a,b)=>a+b,0) / wByDate[wDates[wDates.length-1]].length).toFixed(1);
+      md += `## 体重推移\n${wDates[0]}: ${first}kg → ${wDates[wDates.length-1]}: ${last}kg（差 ${(last-first).toFixed(1)}kg）\n\n`;
+    }
+
+    // 有酸素サマリー
+    if (cLogs.length > 0) {
+      const totalMin = cLogs.reduce((s,l)=>s+(l.min||0),0);
+      md += `## 有酸素サマリー\n計${cLogs.length}回 / 総${totalMin}分\n\n`;
+    }
+  }
+
+  // 日次詳細
+  md += `## 日次ログ\n`;
+  if (dates.length === 0) {
+    md += `データなし\n`;
+  } else {
+    dates.forEach(d => {
+      const day = byDate[d];
+      md += `\n### ${d}\n`;
+      if (day.weight && day.weight.length > 0) {
+        const avg = (day.weight.reduce((a,b)=>a+b,0) / day.weight.length).toFixed(1);
+        md += `体重: ${avg}kg\n`;
+      }
+      if (day.strength.length > 0) {
+        // 種目別にまとめる
+        const byEx = {};
+        day.strength.forEach(l => {
+          if (!byEx[l.exercise]) byEx[l.exercise] = [];
+          byEx[l.exercise].push(l);
+        });
+        Object.entries(byEx).forEach(([ex, sets]) => {
+          const detail = sets.map(s => `${s.kg}kg×${s.reps}×${s.sets}`).join(', ');
+          const vol = sets.reduce((sum,s)=>sum+(s.volume||s.kg*s.reps*s.sets),0);
+          md += `- ${ex}: ${detail}（計${vol.toLocaleString()}kg）\n`;
+        });
+      }
+      if (day.cardio.length > 0) {
+        day.cardio.forEach(c => {
+          const name = c.exercise || '有酸素';
+          md += `- ${name}: 負荷${c.load} × ${c.min}分\n`;
+        });
+      }
+    });
+  }
+
+  // クリップボードコピー
+  navigator.clipboard.writeText(md).then(() => {
+    const toast = document.getElementById('export-toast');
+    toast.textContent = `✅ コピー完了（${md.length.toLocaleString()}文字、${dates.length}日分）`;
+    toast.style.display = 'block';
+    setTimeout(() => { toast.style.display = 'none'; }, 4000);
+  }).catch(err => {
+    alert('コピー失敗: ' + err.message);
+  });
 }
 
 // ── 日付変わったら自動リロード ────────────────────
