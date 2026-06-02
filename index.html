@@ -3646,6 +3646,12 @@ function exportForGemini(scope) {
     dates.forEach(d => {
       const day = byDate[d];
       md += `\n### ${d}\n`;
+      // ワークアウト時間（最初の入力〜最後の入力の差分）
+      const allTs = [...day.strength.map(l=>l.ts), ...day.cardio.map(l=>l.ts)].filter(t=>t && t>0);
+      if (allTs.length >= 2) {
+        const durMin = Math.round((Math.max(...allTs) - Math.min(...allTs)) / 60000);
+        md += `ワークアウト時間: 約${durMin}分\n`;
+      }
       if (day.weight && day.weight.length > 0) {
         const avg = (day.weight.reduce((a,b)=>a+b,0) / day.weight.length).toFixed(1);
         md += `体重: ${avg}kg\n`;
