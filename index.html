@@ -857,6 +857,11 @@
 
   <!-- 筋トレ入力 -->
   <div id="section-strength">
+    <!-- 今日のメニュー提案 -->
+    <div class="card" id="menu-card">
+      <h2>🎯 今日のメニュー提案</h2>
+      <div id="menu-content"><div class="empty">読み込み中...</div></div>
+    </div>
     <!-- 体重 -->
     <div class="card">
       <h2>体重</h2>
@@ -1233,6 +1238,35 @@ function switchTab(tab) {
   document.getElementById('tab-cardio').className   = 'tab' + (tab === 'cardio'   ? ' active' : '');
 }
 
+// ── オフライン保護 ────────────────────────────────
+// 保存失敗時に端末（localStorage）へ退避し、復帰時に自動再送する。
+// cache_<file>: 最新データのスナップショット / dirty_<file>: 未送信フラグ / pending_del_<file>: 未送信の削除ts
+function cacheLocal(file, data) {
+  try { localStorage.setItem('cache_' + file, JSON.stringify(data)); } catch(e) {}
+}
+function getCache(file) {
+  try { return JSON.parse(localStorage.getItem('cache_' + file) || 'null'); } catch(e) { return null; }
+}
+function markDirty(file, data) {
+  cacheLocal(file, data);
+  localStorage.setItem('dirty_' + file, '1');
+}
+function clearDirty(file) {
+  localStorage.removeItem('dirty_' + file);
+  localStorage.removeItem('pending_del_' + file);
+}
+function isDirty(file) { return localStorage.getItem('dirty_' + file) === '1'; }
+function mergePendingDeletes(file, deletedTs) {
+  let cur = [];
+  try { cur = JSON.parse(localStorage.getItem('pending_del_' + file) || '[]'); } catch(e) {}
+  const all = [...new Set([...cur, ...(deletedTs || [])])];
+  if (all.length) localStorage.setItem('pending_del_' + file, JSON.stringify(all));
+  return all.length ? all : null;
+}
+function getPendingDeletes(file) {
+  try { return JSON.parse(localStorage.getItem('pending_del_' + file) || '[]'); } catch(e) { return []; }
+}
+
 // ── GitHub API ──────────────────────────────────
 // tsベースでローカルとリモートをマージ（同じts=重複を排除、両方にない=残す）
 // deletedTs: Set<number> 削除されたtsは両サイドから除外（リモートからの復活を防ぐ）
@@ -1308,8 +1342,31 @@ async function loadLogs() {
       logs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
       document.getElementById('status').textContent = `ログ読込済 (${logs.length}件)`;
     }
+    // 未送信分があれば復元してマージ → 再送
+    if (isDirty(FILE)) {
+      const cached = getCache(FILE);
+      if (Array.isArray(cached)) {
+        const dels = getPendingDeletes(FILE);
+        logs = mergeByTs(cached, logs, dels.length ? new Set(dels) : null);
+        document.getElementById('status').textContent = '未送信の記録を復元 → 再送中...';
+        saveLogs().then(() => {
+          document.getElementById('status').textContent = '未送信分を再送完了 ✓';
+        }).catch(() => {
+          document.getElementById('status').textContent = '再送失敗（オンライン復帰時に自動再送します）';
+        });
+      }
+    } else {
+      cacheLocal(FILE, logs);
+    }
   } catch(e) {
-    document.getElementById('status').textContent = 'エラー: ' + e.message;
+    // オフライン等：端末キャッシュで表示（読み取り専用ではなく追記も可能・後で再送）
+    const cached = getCache(FILE);
+    if (Array.isArray(cached)) {
+      logs = cached;
+      document.getElementById('status').textContent = 'オフライン：端末キャッシュ表示中（記録は復帰時に自動送信）';
+    } else {
+      document.getElementById('status').textContent = 'エラー: ' + e.message;
+    }
   }
   renderAll();
   updateExerciseSelect();
@@ -1317,6 +1374,8 @@ async function loadLogs() {
 }
 
 async function saveLogs(deletedTs = null) {
+  const allDeleted = mergePendingDeletes(FILE, deletedTs);
+  markDirty(FILE, logs); // 先に退避：保存に失敗してもデータは端末に残る
   await saveWithMerge(
     FILE,
     () => logs,
@@ -1325,8 +1384,10 @@ async function saveLogs(deletedTs = null) {
     (v) => { fileSha = v; },
     `log ${today()}`,
     2,
-    deletedTs
+    allDeleted
   );
+  clearDirty(FILE);
+  cacheLocal(FILE, logs);
   // マージで他端末の新規エントリが混ざっている可能性 → 再描画
   renderAll();
   renderCalendar();
@@ -1345,11 +1406,26 @@ async function loadCardioLogs() {
       cardioFileSha = data.sha;
       cardioLogs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
     }
-  } catch(e) { cardioLogs = []; }
+    if (isDirty(CARDIO_FILE)) {
+      const cached = getCache(CARDIO_FILE);
+      if (Array.isArray(cached)) {
+        const dels = getPendingDeletes(CARDIO_FILE);
+        cardioLogs = mergeByTs(cached, cardioLogs, dels.length ? new Set(dels) : null);
+        saveCardioLogs().catch(() => {});
+      }
+    } else {
+      cacheLocal(CARDIO_FILE, cardioLogs);
+    }
+  } catch(e) {
+    const cached = getCache(CARDIO_FILE);
+    cardioLogs = Array.isArray(cached) ? cached : [];
+  }
   renderCardio();
 }
 
 async function saveCardioLogs(deletedTs = null) {
+  const allDeleted = mergePendingDeletes(CARDIO_FILE, deletedTs);
+  markDirty(CARDIO_FILE, cardioLogs);
   await saveWithMerge(
     CARDIO_FILE,
     () => cardioLogs,
@@ -1358,8 +1434,10 @@ async function saveCardioLogs(deletedTs = null) {
     (v) => { cardioFileSha = v; },
     `cardio ${today()}`,
     2,
-    deletedTs
+    allDeleted
   );
+  clearDirty(CARDIO_FILE);
+  cacheLocal(CARDIO_FILE, cardioLogs);
   renderCardio();
 }
 
@@ -1383,7 +1461,7 @@ async function addCardio() {
   const [cheer] = await Promise.all([
     getCardioCheer(entry),
     saveCardioLogs().catch(e => {
-      document.getElementById('status').textContent = '保存エラー: ' + e.message;
+      document.getElementById('status').textContent = '保存エラー（端末に退避済み・オンライン復帰時に自動送信）';
     })
   ]);
   showCardioCheer(cheer);
@@ -1489,7 +1567,20 @@ async function loadWeightLogs() {
       weightFileSha = data.sha;
       weightLogs = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(data.content.replace(/\n/g,'')), c => c.charCodeAt(0))));
     }
-  } catch(e) { weightLogs = []; }
+    if (isDirty(WEIGHT_FILE)) {
+      const cached = getCache(WEIGHT_FILE);
+      if (Array.isArray(cached)) {
+        const dels = getPendingDeletes(WEIGHT_FILE);
+        weightLogs = mergeByTs(cached, weightLogs, dels.length ? new Set(dels) : null);
+        flushWeightLogs().catch(() => {});
+      }
+    } else {
+      cacheLocal(WEIGHT_FILE, weightLogs);
+    }
+  } catch(e) {
+    const cached = getCache(WEIGHT_FILE);
+    weightLogs = Array.isArray(cached) ? cached : [];
+  }
   renderWeight();
 }
 
@@ -1503,8 +1594,12 @@ async function saveWeight() {
 
   renderWeight();
   document.getElementById('status').textContent = '保存中...';
-  await flushWeightLogs();
-  document.getElementById('status').textContent = '体重保存完了 ✓';
+  try {
+    await flushWeightLogs();
+    document.getElementById('status').textContent = '体重保存完了 ✓';
+  } catch(e) {
+    document.getElementById('status').textContent = '保存エラー（端末に退避済み・復帰時に自動送信）';
+  }
 }
 
 async function deleteWeight(ts) {
@@ -1518,6 +1613,8 @@ async function deleteWeight(ts) {
 }
 
 async function flushWeightLogs(deletedTs = null) {
+  const allDeleted = mergePendingDeletes(WEIGHT_FILE, deletedTs);
+  markDirty(WEIGHT_FILE, weightLogs);
   await saveWithMerge(
     WEIGHT_FILE,
     () => weightLogs,
@@ -1526,8 +1623,10 @@ async function flushWeightLogs(deletedTs = null) {
     (v) => { weightFileSha = v; },
     `weight ${today()}`,
     2,
-    deletedTs
+    allDeleted
   );
+  clearDirty(WEIGHT_FILE);
+  cacheLocal(WEIGHT_FILE, weightLogs);
   renderWeight();
 }
 
@@ -1822,7 +1921,7 @@ async function addLog() {
     saveLogs().then(() => {
       document.getElementById('status').textContent = '保存完了 ✓';
     }).catch(e => {
-      document.getElementById('status').textContent = '保存エラー: ' + e.message;
+      document.getElementById('status').textContent = '保存エラー（端末に退避済み・オンライン復帰時に自動送信）';
     })
   ]);
   showCheer(cheer);
@@ -1890,7 +1989,7 @@ async function saveEditedEntry(ts) {
   await saveLogs().then(() => {
     document.getElementById('status').textContent = '更新完了 ✓';
   }).catch(e => {
-    document.getElementById('status').textContent = '保存エラー: ' + e.message;
+    document.getElementById('status').textContent = '保存エラー（端末に退避済み・オンライン復帰時に自動送信）';
   });
 }
 
@@ -1996,7 +2095,7 @@ async function saveNewEntryForDate(date) {
   await saveLogs().then(() => {
     document.getElementById('status').textContent = '追加完了 ✓';
   }).catch(e => {
-    document.getElementById('status').textContent = '保存エラー: ' + e.message;
+    document.getElementById('status').textContent = '保存エラー（端末に退避済み・オンライン復帰時に自動送信）';
   });
 }
 
@@ -2643,6 +2742,7 @@ function renderAll() {
   renderVolumeGraph();
   renderFatigue();
   renderTodayMuscles();
+  renderTodayMenu();
   updateExerciseGraphSelect();
 
   const todayLogs = logs.filter(e => e.date === t).slice().sort((a,b) => (a.ts||0)-(b.ts||0));
@@ -3100,9 +3200,12 @@ function saveExerciseAlias(from, to) {
   const a = getExerciseAliases();
   a[from] = to;
   localStorage.setItem('exercise_aliases', JSON.stringify(a));
+  _muscleCache = {}; // エイリアス変更で部位判定が変わるためキャッシュを破棄
 }
 
+let _muscleCache = {};
 function getMuscles(exerciseName) {
+  if (_muscleCache[exerciseName]) return _muscleCache[exerciseName];
   const aliases = { ...BUILTIN_ALIASES, ...getExerciseAliases() };
   const name = aliases[exerciseName] || exerciseName;
   const results = [];
@@ -3111,6 +3214,7 @@ function getMuscles(exerciseName) {
       results.push(muscle);
     }
   }
+  _muscleCache[exerciseName] = results;
   return results;
 }
 
@@ -3546,6 +3650,179 @@ function renderExerciseGraph() {
     </div>`;
 }
 
+// ── 今日のメニュー提案 ───────────────────────────
+const MENU_GROUPS = [
+  { name: '胸',   muscles: ['大胸筋'] },
+  { name: '背中', muscles: ['広背筋','僧帽筋','菱形筋','脊柱起立筋'] },
+  { name: '肩',   muscles: ['三角筋前部','三角筋中部','三角筋後部'] },
+  { name: '腕',   muscles: ['上腕二頭筋','上腕三頭筋'] },
+  { name: '脚',   muscles: ['大腿四頭筋','ハムストリングス','下腿三頭筋'] },
+  { name: '臀部', muscles: ['大臀筋','中臀筋'] },
+  { name: '腹',   muscles: ['腹直筋','腹斜筋'] },
+];
+
+function isBodyweightExercise(ex) {
+  // 部分一致で安全なもの（マシン種目と紛れない名前）
+  if (ex.includes('自重') ||
+      ['プッシュアップ','腕立て','懸垂','チンニング','プルアップ','チンアップ','プランク','ディップ'].some(n => ex.includes(n))) return true;
+  // 腹筋系は「アブドミナルクランチ」等のマシン種目があるため完全一致のみ自重扱い
+  return ['クランチ','レッグレイズ','ニーレイズ','シットアップ','腹筋'].includes(ex);
+}
+
+// 前回のトップセットから次の処方を決める（漸進性過負荷）
+function prescribe(exercise) {
+  const exLogs = logs.filter(l => l.exercise === exercise);
+  if (!exLogs.length) return null;
+  const lastDate  = exLogs.reduce((m, l) => l.date > m ? l.date : m, '');
+  const lastSets  = exLogs.filter(l => l.date === lastDate);
+  const topKg     = Math.max(...lastSets.map(l => l.kg || 0));
+  const repsAtTop = Math.max(...lastSets.filter(l => l.kg === topKg).map(l => l.reps || 0));
+
+  let kg, reps, note;
+  if (isBodyweightExercise(exercise)) {
+    kg = topKg; reps = repsAtTop + 1; note = '回数+1';
+  } else if (repsAtTop >= 10) {
+    kg = Math.round((topKg + 2.5) * 2) / 2; reps = 8; note = '重量UP';
+  } else {
+    kg = topKg; reps = repsAtTop + 1; note = '回数+1';
+  }
+  return { lastDate, topKg, repsAtTop, kg, reps, note };
+}
+
+// プラトー検知：推定1RMが21日以上・3セッション以上更新されていない種目
+function detectPlateaus() {
+  const t = today();
+  const byEx = {};
+  for (const l of logs) (byEx[l.exercise] ||= []).push(l);
+
+  const result = [];
+  for (const [ex, arr] of Object.entries(byEx)) {
+    if (isBodyweightExercise(ex)) continue; // 自重系は重量固定なので対象外
+    const byDate = {};
+    for (const l of arr) {
+      const rm = (l.kg || 0) * (1 + (l.reps || 0) / 30);
+      if (!byDate[l.date] || rm > byDate[l.date]) byDate[l.date] = rm;
+    }
+    const dates = Object.keys(byDate).sort();
+    if (dates.length < 4) continue;
+    if (daysBetween(t, dates[dates.length - 1]) > 14) continue; // 最近やってない種目は対象外
+
+    let best = 0, lastImprove = dates[0];
+    for (const d of dates) {
+      if (byDate[d] > best + 0.5) { best = byDate[d]; lastImprove = d; }
+    }
+    const stagnantDays   = daysBetween(t, lastImprove);
+    const sessionsSince  = dates.filter(d => d > lastImprove).length;
+    if (stagnantDays >= 21 && sessionsSince >= 3) {
+      const topKg = Math.max(...arr.map(l => l.kg || 0));
+      result.push({ ex, days: stagnantDays, sessions: sessionsSince, topKg });
+    }
+  }
+  return result.sort((a, b) => b.days - a.days);
+}
+
+function renderTodayMenu() {
+  const el = document.getElementById('menu-content');
+  if (!el) return;
+  if (!logs.length) {
+    el.innerHTML = '<div class="empty">記録が貯まると提案が出ます</div>';
+    return;
+  }
+  const t = today();
+  const todayDone = new Set(logs.filter(e => e.date === t).map(e => e.exercise));
+  // 今日の分を除いて部位の回復日数を計算（記録するたびに提案が消えないように）
+  const pastLogs = logs.filter(e => e.date !== t);
+
+  const groupInfo = MENU_GROUPS.map(g => {
+    let latest = null;
+    for (const e of pastLogs) {
+      const ms = getMuscles(e.exercise);
+      if (g.muscles.some(m => ms.includes(m))) {
+        if (!latest || e.date > latest) latest = e.date;
+      }
+    }
+    return { ...g, days: latest ? daysBetween(t, latest) : null };
+  }).filter(g => g.days !== null); // 履歴のない部位は提案できない
+
+  let targets = groupInfo.filter(g => g.days >= 4).sort((a, b) => b.days - a.days);
+  let fallback = false;
+  if (!targets.length) {
+    targets = groupInfo.filter(g => g.days >= 2).sort((a, b) => b.days - a.days).slice(0, 1);
+    fallback = true;
+  }
+
+  if (!targets.length) {
+    el.innerHTML = '<div style="font-size:13px;color:#888;line-height:1.6">全部位が回復中。今日は完全休養か有酸素だけにしておけ。休むのも仕事だ。</div>';
+    return;
+  }
+
+  // 部位ごとに、お前がよくやる種目から頻度順に選ぶ
+  const freq = {};
+  for (const e of logs) freq[e.exercise] = (freq[e.exercise] || 0) + 1;
+  const pickExercises = (g, n) => Object.keys(freq)
+    .filter(ex => { const ms = getMuscles(ex); return g.muscles.some(m => ms.includes(m)); })
+    .sort((a, b) => freq[b] - freq[a])
+    .slice(0, n);
+
+  const items = [];
+  for (const g of targets.slice(0, 2)) {
+    for (const ex of pickExercises(g, 2)) {
+      if (!items.find(i => i.ex === ex)) items.push({ group: g.name, days: g.days, ex });
+      if (items.length >= 4) break;
+    }
+    if (items.length >= 4) break;
+  }
+
+  const targetLabel = targets.slice(0, 2).map(g => `${g.name}（${g.days}日ぶり）`).join(' ＋ ');
+  let html = `<div style="font-size:12px;color:#888;margin-bottom:10px">${fallback ? '回復途中だが、やるなら一番休んでいる部位：' : '今日鍛えるべきは：'}<strong style="color:#ff8866">${esc(targetLabel)}</strong></div>`;
+
+  html += items.map(item => {
+    const p = prescribe(item.ex);
+    if (!p) return '';
+    const done = todayDone.has(item.ex);
+    const kgStr = isBodyweightExercise(item.ex) && p.kg <= 0 ? '' : `${p.kg}kg × `;
+    return `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #222;${done ? 'opacity:0.55' : ''}">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:14px">${done ? '✅ ' : ''}${esc(item.ex)}</div>
+          <div style="font-size:12px;color:#777;margin-top:2px">
+            前回 ${esc(p.topKg)}kg × ${esc(p.repsAtTop)}回（${esc(p.lastDate.slice(5).replace('-','/'))}）
+            → <strong style="color:#ff8866">${esc(kgStr)}${esc(p.reps)}回</strong>
+            <span style="font-size:10px;background:#2a2a2a;border-radius:4px;padding:1px 6px;margin-left:4px;color:#aaa">${esc(p.note)}</span>
+          </div>
+        </div>
+        <button data-ex="${esc(item.ex)}" data-kg="${esc(p.kg)}" data-reps="${esc(p.reps)}"
+          onclick="applySuggestion(this.dataset.ex, this.dataset.kg, this.dataset.reps)"
+          style="background:${done ? '#2a2a2a' : '#ff4444'};color:${done ? '#888' : '#fff'};border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0">入力</button>
+      </div>`;
+  }).join('');
+
+  // プラトー警告
+  const plateaus = detectPlateaus();
+  if (plateaus.length) {
+    html += `
+      <div style="background:linear-gradient(135deg,#2a1a00,#1f1400);border:1px solid #ff8800;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:13px;color:#ffcc88;line-height:1.6">
+        <strong style="color:#ff8800">⚠ 停滞検知</strong>
+        ${plateaus.map(p => `<div style="margin-top:4px">・<strong>${esc(p.ex)}</strong>：${esc(p.days)}日間（${esc(p.sessions)}セッション）1RM更新なし。重量を5〜10%落として回数で攻めるか、種目を替えて刺激を変えろ。</div>`).join('')}
+      </div>`;
+  }
+
+  el.innerHTML = html;
+}
+
+// メニュー提案 → 入力フォームへワンタップ転記
+function applySuggestion(ex, kg, reps) {
+  const sel = document.getElementById('exercise-select');
+  if (![...sel.options].some(o => o.value === ex)) updateExerciseSelect();
+  sel.value = ex;
+  onExerciseSelect();
+  document.getElementById('kg').value   = kg;
+  document.getElementById('reps').value = reps;
+  document.getElementById('sets').value = 1;
+  updateKgHint();
+  document.getElementById('kg').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 // ── 起動 ────────────────────────────────────────
 GH_TOKEN   = localStorage.getItem('gh_token')   || '';
 GEMINI_KEY = localStorage.getItem('gemini_key') || '';
@@ -3689,6 +3966,16 @@ function exportForGemini(scope) {
     alert('コピー失敗: ' + err.message);
   });
 }
+
+// ── オンライン復帰時に未送信分を自動再送 ──────────
+window.addEventListener('online', () => {
+  if (!GH_TOKEN) return;
+  if (isDirty(FILE)) saveLogs().then(() => {
+    document.getElementById('status').textContent = '未送信分を再送完了 ✓';
+  }).catch(() => {});
+  if (isDirty(CARDIO_FILE)) saveCardioLogs().catch(() => {});
+  if (isDirty(WEIGHT_FILE)) flushWeightLogs().catch(() => {});
+});
 
 // ── 日付変わったら自動リロード ────────────────────
 const _loadedDate = today();
