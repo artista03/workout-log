@@ -9803,5 +9803,15 @@
     "sets": 1,
     "rir": null,
     "volume": 500
+  },
+  {
+    "date": "2026-06-13",
+    "ts": 1781310871556,
+    "exercise": "ベンチプレス",
+    "kg": 60,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 600
   }
 ]
