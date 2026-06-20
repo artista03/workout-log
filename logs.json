@@ -10363,5 +10363,15 @@
     "sets": 1,
     "rir": null,
     "volume": 900
+  },
+  {
+    "date": "2026-06-20",
+    "ts": 1781922145056,
+    "exercise": "ローロー",
+    "kg": 30,
+    "reps": 30,
+    "sets": 1,
+    "rir": null,
+    "volume": 900
   }
 ]
