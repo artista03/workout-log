@@ -1730,10 +1730,13 @@ function renderWeightGraph(points) {
 }
 
 // ── プルダウン管理 ───────────────────────────────
+// サッカー再開向けに常時表示するビルトイン種目（アキレス腱・片脚・ハム強化）
+const BUILTIN_EXERCISES = ['カーフレイズ','ブルガリアンスクワット','ルーマニアンデッドリフト'];
+
 function getExerciseList() {
   const fromLogs = [...new Set(logs.map(e => e.exercise))];
   const fromStorage = JSON.parse(localStorage.getItem('exercise_list') || '[]');
-  return [...new Set([...fromLogs, ...fromStorage])].filter(Boolean);
+  return [...new Set([...fromLogs, ...fromStorage, ...BUILTIN_EXERCISES])].filter(Boolean);
 }
 
 function saveExerciseList(list) {
