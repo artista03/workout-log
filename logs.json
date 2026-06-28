@@ -11243,5 +11243,15 @@
     "sets": 1,
     "rir": null,
     "volume": 800
+  },
+  {
+    "date": "2026-06-28",
+    "ts": 1782620440828,
+    "exercise": "カーフレイズ",
+    "kg": 80,
+    "reps": 12,
+    "sets": 1,
+    "rir": null,
+    "volume": 960
   }
 ]
