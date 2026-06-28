@@ -11093,5 +11093,15 @@
     "sets": 1,
     "rir": null,
     "volume": 325
+  },
+  {
+    "date": "2026-06-28",
+    "ts": 1782616702650,
+    "exercise": "レッグカール",
+    "kg": 10,
+    "reps": 20,
+    "sets": 1,
+    "rir": null,
+    "volume": 200
   }
 ]
