@@ -11343,5 +11343,15 @@
     "sets": 1,
     "rir": null,
     "volume": 240
+  },
+  {
+    "date": "2026-06-29",
+    "ts": 1782713637705,
+    "exercise": "懸垂",
+    "kg": 80,
+    "reps": 5,
+    "sets": 1,
+    "rir": null,
+    "volume": 400
   }
 ]
