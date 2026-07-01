@@ -11573,5 +11573,15 @@
     "sets": 1,
     "rir": null,
     "volume": 250
+  },
+  {
+    "date": "2026-07-01",
+    "ts": 1782869084493,
+    "exercise": "EZバーアームカール",
+    "kg": 27.5,
+    "reps": 7,
+    "sets": 1,
+    "rir": null,
+    "volume": 192.5
   }
 ]
