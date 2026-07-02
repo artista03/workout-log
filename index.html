@@ -107,7 +107,7 @@
 
     /* 記録トースト */
     #record-toast {
-      position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+      position: fixed; bottom: 104px; left: 50%; transform: translateX(-50%) translateY(80px);
       background: #1a1a1a; border: 1px solid #ff4444;
       border-radius: 14px; padding: 14px 20px;
       display: flex; align-items: center; gap: 12px;
@@ -122,6 +122,65 @@
     .toast-exercise { font-size: 15px; font-weight: 700; color: #fff; }
     .toast-detail { font-size: 12px; color: #888; margin-top: 2px; }
     .toast-vol { font-size: 13px; color: #ff4444; font-weight: 700; margin-top: 2px; }
+
+    /* レストタイマー */
+    #rest-timer {
+      position: fixed; bottom: 14px; left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      width: calc(100% - 32px); max-width: 400px;
+      background: #16161c; border: 1px solid #3a3a44;
+      border-radius: 16px; padding: 12px 14px 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.65);
+      z-index: 10000;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s;
+      opacity: 0; pointer-events: none;
+    }
+    #rest-timer.show { transform: translateX(-50%) translateY(0); opacity: 1; pointer-events: auto; }
+    #rest-timer.done { border-color: #44cc44; background: #0e1f0e; animation: restDonePulse 0.8s ease 3; }
+    @keyframes restDonePulse {
+      0%,100% { box-shadow: 0 10px 30px rgba(0,0,0,0.65); }
+      50% { box-shadow: 0 0 30px rgba(68,204,68,0.55); }
+    }
+    .rest-row { display: flex; align-items: center; gap: 10px; }
+    .rest-label { font-size: 11px; color: #888; letter-spacing: 1px; }
+    #rest-time {
+      font-size: 26px; font-weight: 800; color: #fff;
+      font-feature-settings: 'tnum'; cursor: pointer; min-width: 78px;
+    }
+    #rest-timer.done #rest-time { color: #44cc44; }
+    .rest-time-hint { font-size: 9px; color: #555; margin-top: -2px; }
+    .rest-btns { display: flex; gap: 8px; margin-left: auto; }
+    .rest-btn {
+      background: #26262e; color: #ccc; border: 1px solid #3a3a44;
+      border-radius: 8px; padding: 8px 12px; font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .rest-btn:active { background: #33333d; }
+    .rest-btn.skip { color: #777; }
+    #rest-bar-wrap {
+      height: 4px; background: #26262e; border-radius: 2px;
+      margin-top: 8px; overflow: hidden;
+    }
+    #rest-bar {
+      height: 100%; width: 100%; background: linear-gradient(90deg, #ff4444, #ff8844);
+      border-radius: 2px; transition: width 0.25s linear;
+    }
+    #rest-timer.done #rest-bar { background: #44cc44; }
+
+    /* ワンタップ記録ボタン */
+    .quick-same-btn {
+      width: 100%; margin-top: 10px; padding: 12px;
+      background: #2a1a1a; color: #ffaa88;
+      border: 1px solid #663333; border-radius: 10px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+    }
+    .quick-same-btn:active { background: #3a2424; }
+    .cmp-repeat-btn {
+      width: 100%; margin-top: 12px; padding: 13px;
+      background: rgba(255,80,80,0.12); color: #ff8877;
+      border: 1px solid rgba(255,80,80,0.35); border-radius: 10px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+    }
+    .cmp-repeat-btn:active { background: rgba(255,80,80,0.2); }
 
     /* 前回 vs 今回 比較ポップアップ */
     #compare-overlay {
@@ -1167,6 +1226,22 @@
   </div>
 </div>
 
+<!-- レストタイマー -->
+<div id="rest-timer">
+  <div class="rest-row">
+    <div>
+      <div class="rest-label">⏱ REST</div>
+      <div id="rest-time" onclick="cycleRestPreset()">1:30</div>
+      <div class="rest-time-hint">タップで秒数切替</div>
+    </div>
+    <div class="rest-btns">
+      <button class="rest-btn" onclick="addRestTime(30)">+30秒</button>
+      <button class="rest-btn skip" onclick="skipRestTimer()">スキップ</button>
+    </div>
+  </div>
+  <div id="rest-bar-wrap"><div id="rest-bar"></div></div>
+</div>
+
 <script>
 const OWNER        = 'artista03';
 const REPO         = 'workout-log';
@@ -1830,6 +1905,7 @@ function renderExerciseStats(exercise) {
       </div>
     </div>
     <div class="ex-history-row">${recentPills}</div>
+    <button class="quick-same-btn" onclick="quickLogSame()">⚡ 前回と同じを記録（${esc(last.kg)}kg × ${esc(last.reps)}回）</button>
   `;
   card.style.display = 'block';
 }
@@ -1910,6 +1986,7 @@ async function addLog() {
   const isPR = (maxKgForPR > 0 && entry.kg > maxKgForPR) || (maxRmForPR > 0 && current1rm > maxRmForPR);
   showRecordToast(entry, isPR);
   showCompareCard(entry, isPR);
+  startRestTimer();
 
   // 未知種目のサジェスト
   if (!getExerciseAliases()[entry.exercise] && getMuscles(entry.exercise).length === 0) {
@@ -2267,6 +2344,113 @@ async function getCheer(entry) {
 
 // ── 記録トースト ─────────────────────────────────
 let _toastTimer = null;
+// ── レストタイマー ────────────────────────────
+const REST_PRESETS = [60, 90, 120, 150, 180];
+let _restInt = null, _restEndAt = 0, _restTotalMs = 0, _restHideTimer = null;
+
+function restDuration() {
+  const v = parseInt(localStorage.getItem('rest_sec'));
+  return REST_PRESETS.includes(v) ? v : 90;
+}
+
+function fmtRest(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function startRestTimer() {
+  const el = document.getElementById('rest-timer');
+  if (_restHideTimer) { clearTimeout(_restHideTimer); _restHideTimer = null; }
+  if (_restInt) clearInterval(_restInt);
+  el.classList.remove('done');
+  _restTotalMs = restDuration() * 1000;
+  _restEndAt = Date.now() + _restTotalMs;
+  el.classList.add('show');
+  restTick();
+  _restInt = setInterval(restTick, 250);
+}
+
+function restTick() {
+  const remainMs = _restEndAt - Date.now();
+  if (remainMs <= 0) { finishRestTimer(); return; }
+  document.getElementById('rest-time').textContent = fmtRest(Math.ceil(remainMs / 1000));
+  document.getElementById('rest-bar').style.width = Math.max(0, remainMs / _restTotalMs * 100) + '%';
+}
+
+function finishRestTimer() {
+  if (_restInt) { clearInterval(_restInt); _restInt = null; }
+  const el = document.getElementById('rest-timer');
+  el.classList.add('done');
+  document.getElementById('rest-time').textContent = '休憩終了！';
+  document.getElementById('rest-bar').style.width = '100%';
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 400]);
+  restBeep();
+  _restHideTimer = setTimeout(skipRestTimer, 6000);
+}
+
+function skipRestTimer() {
+  if (_restInt) { clearInterval(_restInt); _restInt = null; }
+  if (_restHideTimer) { clearTimeout(_restHideTimer); _restHideTimer = null; }
+  const el = document.getElementById('rest-timer');
+  el.classList.remove('show');
+  setTimeout(() => el.classList.remove('done'), 350);
+}
+
+function addRestTime(sec) {
+  if (!_restInt) { startRestTimer(); return; }
+  _restEndAt += sec * 1000;
+  _restTotalMs += sec * 1000;
+  restTick();
+}
+
+function cycleRestPreset() {
+  const cur = restDuration();
+  const next = REST_PRESETS[(REST_PRESETS.indexOf(cur) + 1) % REST_PRESETS.length];
+  localStorage.setItem('rest_sec', String(next));
+  // タイマー動作中なら新しい秒数で再スタート
+  if (_restInt) startRestTimer();
+  else document.getElementById('rest-time').textContent = fmtRest(next);
+}
+
+let _audioCtx = null;
+function restBeep() {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (_audioCtx.state === 'suspended') _audioCtx.resume();
+    [0, 0.25, 0.5].forEach((delay, i) => {
+      const t = _audioCtx.currentTime + delay;
+      const osc = _audioCtx.createOscillator();
+      const gain = _audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = i === 2 ? 1320 : 880;
+      gain.gain.setValueAtTime(0.001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+      osc.connect(gain).connect(_audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.2);
+    });
+  } catch (e) { /* 音が出せない環境では無視 */ }
+}
+
+// ── ワンタップ記録 ────────────────────────────
+function quickLogSame() {
+  const exercise = getSelectedExercise();
+  if (!exercise) return;
+  const exLogs = logs.filter(l => l.exercise === exercise).sort((a,b) => (a.ts||0)-(b.ts||0));
+  const last = exLogs[exLogs.length - 1];
+  if (!last) return;
+  document.getElementById('kg').value = last.kg;
+  document.getElementById('reps').value = last.reps;
+  document.getElementById('sets').value = last.sets || 1;
+  addLog();
+}
+
+function repeatSameSet() {
+  closeCompareCard();
+  // addLog は入力欄を維持するので、そのまま呼べば同じ内容がもう1セット記録される
+  addLog();
+}
+
 function showRecordToast(entry, isPR) {
   const est1rm = Math.round(entry.kg * (1 + entry.reps / 30));
   document.getElementById('toast-exercise').textContent = entry.exercise + (isPR ? '  🏆 PR更新！' : '');
@@ -2321,6 +2505,7 @@ function showCompareCard(entry, isPR) {
         ${esc(entry.kg)}kg × ${esc(entry.reps)}回 × ${esc(entry.sets)}セット<br>
         <span style="font-size:11px;color:#666">ここから積み上げていこう</span>
       </div>
+      <button class="cmp-repeat-btn" onclick="repeatSameSet()">＋ 同じセットをもう1回</button>
     `;
     overlay.classList.add('show');
     return;
@@ -2411,6 +2596,7 @@ function showCompareCard(entry, isPR) {
         ${diffPill(ns.maxKg - ps.maxKg, 'kg')}
       </div>
     </div>
+    <button class="cmp-repeat-btn" onclick="repeatSameSet()">＋ 同じセットをもう1回</button>
   `;
   overlay.classList.add('show');
 }
