@@ -2251,8 +2251,14 @@ function buildPrompt(entry) {
   // 体重（未記録なら80kgをデフォルト）
   const latestWeight = weightLogs.length ? weightLogs[weightLogs.length-1].kg : 80;
 
+  // スクワット系は自重分（体重の50%）を重量に含めて記録しているため、基準比較では外部重量に換算する
+  const bwOffset   = entry.exercise.includes('スクワット') ? Math.round(latestWeight * 0.5) : 0;
+  const externalKg = Math.max(entry.kg - bwOffset, 0);
+
   // 1RM推定（エプリー式）: weight × (1 + reps/30)
   const estimated1RM = Math.round(entry.kg * (1 + entry.reps / 30));
+  // 基準比較用の1RM（自重分を除いた外部重量ベース）
+  const compare1RM   = Math.round(externalKg * (1 + entry.reps / 30));
 
   // 種目別・45歳男性基準（1RMベース、体重比）
   const BENCHMARKS = {
@@ -2263,20 +2269,24 @@ function buildPrompt(entry) {
     ラットプルダウン: { avg: 0.6,  mid: 0.8,  elite: 1.0  },
   };
   let benchmark = null;
-  for (const [name, vals] of Object.entries(BENCHMARKS)) {
-    if (entry.exercise.includes(name) || name.includes(entry.exercise)) {
-      benchmark = { name, avg: Math.round(latestWeight * vals.avg), mid: Math.round(latestWeight * vals.mid), elite: Math.round(latestWeight * vals.elite) };
-      break;
+  // 外部重量が0（＝純粋な自重種目）は基準比較の対象外
+  if (externalKg > 0) {
+    for (const [name, vals] of Object.entries(BENCHMARKS)) {
+      if (entry.exercise.includes(name) || name.includes(entry.exercise)) {
+        benchmark = { name, avg: Math.round(latestWeight * vals.avg), mid: Math.round(latestWeight * vals.mid), elite: Math.round(latestWeight * vals.elite) };
+        break;
+      }
     }
   }
   let benchmarkText = '';
   if (benchmark) {
-    const diff = estimated1RM - benchmark.avg;
-    const level = estimated1RM >= benchmark.elite ? 'アスリートレベル' : estimated1RM >= benchmark.mid ? '中級者レベル' : estimated1RM >= benchmark.avg ? '平均以上' : '平均以下';
+    const diff = compare1RM - benchmark.avg;
+    const level = compare1RM >= benchmark.elite ? 'アスリートレベル' : compare1RM >= benchmark.mid ? '中級者レベル' : compare1RM >= benchmark.avg ? '平均以上' : '平均以下';
+    const kgText = bwOffset ? `${entry.kg}kg（自重${bwOffset}kg込み）→ バー${externalKg}kg` : `${entry.kg}kg`;
     benchmarkText = `
 【45歳・${latestWeight}kg男性の${benchmark.name}基準（1RMベース）】
 平均: ${benchmark.avg}kg ／ 中級者: ${benchmark.mid}kg ／ アスリート: ${benchmark.elite}kg
-今回の推定1RM: ${entry.kg}kg×${entry.reps}回 → 推定1RM ${estimated1RM}kg（平均比 ${diff >= 0 ? '+' : ''}${diff}kg・${level}）`;
+今回の推定1RM: ${kgText}×${entry.reps}回 → 推定1RM ${compare1RM}kg（平均比 ${diff >= 0 ? '+' : ''}${diff}kg・${level}）${bwOffset ? '\n※この種目は自重分を含めて記録している。上の基準比較はバーの重量だけで換算済み。' : ''}`;
   } else {
     benchmarkText = `\n推定1RM: ${estimated1RM}kg（体重${latestWeight}kgの${(estimated1RM / latestWeight).toFixed(2)}倍）`;
   }
@@ -2308,7 +2318,7 @@ ${benchmarkText}
 【トレーナーの指示】
 以下の2文だけを書け。それ以上もそれ以下も禁止。マークダウン・絵文字・箇条書き禁止。
 
-1文目：推定1RM ${estimated1RM}kgと45歳・${latestWeight}kg男性の平均${benchmark ? benchmark.avg + 'kg' : '体重比'}を比べて評価しろ。平均を上回っているなら「平均より○kg上だ」と称え、下回っているなら「あと○kgで平均に届く、次は○kgを目指せ」と具体的目標を言え。
+1文目：推定1RM ${benchmark ? compare1RM : estimated1RM}kgと45歳・${latestWeight}kg男性の平均${benchmark ? benchmark.avg + 'kg' : '体重比'}を比べて評価しろ。平均を上回っているなら「平均より○kg上だ」と称え、下回っているなら「あと○kgで平均に届く、次は○kgを目指せ」と具体的目標を言え。
 2文目：今日${dailyTon}トンは45歳男性基準で${volLevel}だと言い、BTC・塩飽水軍・旦那衆・商社のどれか1つを使った完結した文章で締めろ（キーワードだけで終わるな。必ず動詞で文を終わらせろ）。
 
 絶対禁止ワード：「次も頑張れ」「頑張ろう」「素晴らしい」「継続」「積み重ね」「keep」。
