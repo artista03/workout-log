@@ -4488,7 +4488,9 @@ async function ghealthFetchCondition() {
       .filter(v => v > 0);
     if (vals.length) {
       cond.rhr = vals[0];
-      if (vals.length >= 4) cond.rhrBase = ghealthMedian(vals.slice(1));
+      cond.rhrDays = vals.length;
+      // 平常値は7日分以上の履歴が貯まってから。少ない母数で「平常」を名乗らせない
+      if (vals.length >= 8) cond.rhrBase = ghealthMedian(vals.slice(1));
     }
   } catch (e) { ghealthLog('安静時心拍の取得に失敗: ' + e.message); }
 
@@ -4513,8 +4515,9 @@ async function ghealthFetchCondition() {
       const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
       const r1 = v => Math.round(v * 10) / 10;
       cond.hrv = r1(avg(byDay[days[0]]));
+      cond.hrvDays = days.length;
       const base = days.slice(1, 8).map(d => avg(byDay[d]));
-      if (base.length >= 2) cond.hrvBase = r1(avg(base));
+      if (base.length >= 5) cond.hrvBase = r1(avg(base)); // 5日分未満は平常値とみなさない
       break;
     } catch (e) { /* 次の型を試す */ }
   }
@@ -4531,7 +4534,10 @@ async function ghealthFetchCondition() {
     flags.push('HRV低下');
   }
   cond.flags = flags;
-  cond.level = flags.length >= 2 ? 'easy' : (flags.length === 1 ? 'normal' : 'go');
+  // 平常値がまだ育っていないうちは判定を出さない（睡眠だけは絶対値で見えるので注意は出す）
+  cond.learning = (cond.rhrBase == null && cond.hrvBase == null);
+  cond.level = cond.learning ? 'learning'
+    : (flags.length >= 2 ? 'easy' : (flags.length === 1 ? 'normal' : 'go'));
 
   localStorage.setItem(GHEALTH_COND, JSON.stringify(cond));
   ghealthLog(`コンディション更新: ${cond.level}${flags.length ? '（' + flags.join('・') + '）' : ''}`);
@@ -4549,9 +4555,13 @@ function ghealthConditionHtml() {
   const c = ghealthGetCondition();
   if (!c) return '';
   const conf = {
-    go:     { color: '#4c4', label: '攻めていい', msg: '回復してる。今日は重量を狙え。' },
-    normal: { color: '#dc4', label: 'ふつう',     msg: '悪くない。いつも通りでいけ。' },
-    easy:   { color: '#e66', label: '軽めにしろ', msg: '体が戻ってない。今日追い込んでも伸びない。' }
+    go:      { color: '#4c4', label: '攻めていい', msg: '回復してる。今日は重量を狙え。' },
+    normal:  { color: '#dc4', label: 'ふつう',     msg: '悪くない。いつも通りでいけ。' },
+    easy:    { color: '#e66', label: '軽めにしろ', msg: '体が戻ってない。今日追い込んでも伸びない。' },
+    learning:{ color: '#68a', label: '計測中',
+      msg: (c.sleepMin != null && c.sleepMin < 360)
+        ? '判定はまだ出せない。ただ昨夜の睡眠は短い。'
+        : '平常値を学習中。あと数日で判定が始まる。' }
   }[c.level];
   if (!conf) return '';
   const parts = [];
@@ -4562,7 +4572,9 @@ function ghealthConditionHtml() {
     <div style="font-size:13px;font-weight:700;color:${conf.color}">今日のコンディション：${conf.label}</div>
     <div style="font-size:12px;color:#999;margin-top:4px">${esc(conf.msg)}</div>
     <div style="font-size:11px;color:#666;margin-top:6px">${esc(parts.join(' ／ '))}</div>
-    ${c.flags && c.flags.length ? `<div style="font-size:11px;color:#e88;margin-top:4px">⚠ ${esc(c.flags.join('・'))}</div>` : ''}
+    ${c.level === 'learning'
+      ? `<div style="font-size:11px;color:#68a;margin-top:4px">平常値を計算中（安静時心拍 ${c.rhrDays || 0}/8日・HRV ${c.hrvDays || 0}/6日）。着け続ければ揃う。</div>`
+      : (c.flags && c.flags.length ? `<div style="font-size:11px;color:#e88;margin-top:4px">⚠ ${esc(c.flags.join('・'))}</div>` : '')}
   </div>`;
 }
 
