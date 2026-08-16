@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>筋トレログ</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -912,6 +913,7 @@
   <div class="tabs">
     <div class="tab active" id="tab-strength" onclick="switchTab('strength')">筋トレ</div>
     <div class="tab" id="tab-cardio" onclick="switchTab('cardio')">有酸素</div>
+    <div class="tab" id="tab-health" onclick="switchTab('health')">Health</div>
   </div>
 
   <!-- 筋トレ入力 -->
@@ -1071,6 +1073,35 @@
     </div>
   </div>
 
+  <!-- Google Health 連携 -->
+  <div id="section-health" style="display:none">
+    <div class="card">
+      <h2>🔗 接続</h2>
+      <p id="ghealth-status" style="color:#888;font-size:14px;margin-bottom:10px">未接続</p>
+      <button class="primary" onclick="ghealthConnect()">Google Health に接続</button>
+      <p style="color:#666;font-size:12px;margin-top:8px">トークンは約1時間で切れます。切れたら押し直してください。</p>
+    </div>
+
+    <div class="card">
+      <h2>💪 筋トレを送信</h2>
+      <p id="ghealth-push-info" style="color:#888;font-size:14px;margin-bottom:10px">—</p>
+      <button class="primary" onclick="ghealthPush(true)">最新1日だけ送る（テスト）</button>
+      <button class="secondary" onclick="ghealthPush(false)">未送信をぜんぶ送る</button>
+    </div>
+
+    <div class="card">
+      <h2>⌚ Fitbit のデータを取得</h2>
+      <button class="primary" onclick="ghealthPull()">体重・睡眠・心拍を取得</button>
+      <pre id="ghealth-pull-out" style="margin-top:10px;max-height:320px;overflow:auto;font-size:11px;line-height:1.5;color:#8c8;white-space:pre-wrap"></pre>
+    </div>
+
+    <div class="card">
+      <h2>📋 ログ</h2>
+      <pre id="ghealth-log" style="max-height:260px;overflow:auto;font-size:12px;line-height:1.6;color:#aaa;white-space:pre-wrap">—</pre>
+    </div>
+  </div>
+
+  <div id="section-common">
   <!-- カレンダー -->
   <div class="card">
     <h2>トレーニングカレンダー</h2>
@@ -1206,6 +1237,7 @@
       <button class="primary" onclick="askTrainer()" style="width:auto;padding:10px 16px;margin-top:0">送信</button>
     </div>
   </div>
+  </div><!-- /section-common -->
 
   <p class="status" id="status">読み込み中...</p>
   <button class="secondary" onclick="resetSetup()">設定リセット</button>
@@ -1309,8 +1341,12 @@ function showMain() {
 function switchTab(tab) {
   document.getElementById('section-strength').style.display = tab === 'strength' ? 'block' : 'none';
   document.getElementById('section-cardio').style.display   = tab === 'cardio'   ? 'block' : 'none';
+  document.getElementById('section-health').style.display   = tab === 'health'   ? 'block' : 'none';
+  document.getElementById('section-common').style.display   = tab === 'health'   ? 'none'  : 'block';
   document.getElementById('tab-strength').className = 'tab' + (tab === 'strength' ? ' active' : '');
   document.getElementById('tab-cardio').className   = 'tab' + (tab === 'cardio'   ? ' active' : '');
+  document.getElementById('tab-health').className   = 'tab' + (tab === 'health'   ? ' active' : '');
+  if (tab === 'health') ghealthRenderInfo();
 }
 
 // ── オフライン保護 ────────────────────────────────
@@ -4178,6 +4214,165 @@ window.addEventListener('online', () => {
   if (isDirty(CARDIO_FILE)) saveCardioLogs().catch(() => {});
   if (isDirty(WEIGHT_FILE)) flushWeightLogs().catch(() => {});
 });
+
+// ── Google Health 連携 ────────────────────────────
+// 書き込み: PATCH /users/me/dataTypes/exercise/dataPoints/{id}
+//   idはその日の最初のセットのts。同じ日を何度送っても上書きになるので重複しない
+// 読み取り: GET /users/me/dataTypes/{型}/dataPoints（新しい順）
+const GHEALTH_CLIENT_ID = '668771941549-qljmfep7ihp1kakusdru5e2bks5t165i.apps.googleusercontent.com';
+const GHEALTH_SCOPES = [
+  'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.writeonly',
+  'https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly',
+  'https://www.googleapis.com/auth/googlehealth.health_metrics_and_measurements.readonly',
+  'https://www.googleapis.com/auth/googlehealth.sleep.readonly'
+].join(' ');
+const GHEALTH_BASE   = 'https://health.googleapis.com/v4/users/me';
+const GHEALTH_SYNCED = 'ghealth_synced';
+let ghealthToken = null, ghealthExpiry = 0, ghealthClient = null, ghealthPending = null;
+
+function ghealthLog(msg) {
+  const el = document.getElementById('ghealth-log');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString('ja-JP');
+  el.textContent = `[${t}] ${msg}\n` + (el.textContent === '—' ? '' : el.textContent);
+}
+function ghealthSetStatus(ok, extra) {
+  const el = document.getElementById('ghealth-status');
+  if (!el) return;
+  el.textContent = (ok ? '接続済み ✓' : '未接続') + (extra ? ' ' + extra : '');
+  el.style.color = ok ? '#4c4' : '#888';
+}
+
+function ghealthInit() {
+  if (ghealthClient) return true;
+  if (!(window.google && google.accounts && google.accounts.oauth2)) return false;
+  ghealthClient = google.accounts.oauth2.initTokenClient({
+    client_id: GHEALTH_CLIENT_ID,
+    scope: GHEALTH_SCOPES,
+    callback: (resp) => {
+      const next = ghealthPending; ghealthPending = null;
+      if (resp.error) { ghealthSetStatus(false, '(' + resp.error + ')'); ghealthLog('認証エラー: ' + resp.error); return; }
+      ghealthToken  = resp.access_token;
+      ghealthExpiry = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
+      ghealthSetStatus(true);
+      ghealthLog('接続しました');
+      if (next) next();
+    },
+    error_callback: (err) => {
+      ghealthPending = null;
+      ghealthLog('認証を中断しました' + (err && err.type ? '（' + err.type + '）' : ''));
+    }
+  });
+  return true;
+}
+
+function ghealthConnect(then) {
+  if (!ghealthInit()) { ghealthLog('Google認証ライブラリを読み込み中です。数秒待ってからもう一度'); return; }
+  if (ghealthToken && Date.now() < ghealthExpiry) { if (typeof then === 'function') then(); return; }
+  ghealthPending = (typeof then === 'function') ? then : null;
+  ghealthClient.requestAccessToken();
+}
+
+async function ghealthApi(path, method, body) {
+  const res = await fetch(GHEALTH_BASE + path, {
+    method: method || 'GET',
+    headers: { Authorization: 'Bearer ' + ghealthToken, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const txt = await res.text();
+  let js = null; try { js = JSON.parse(txt); } catch (e) {}
+  if (!res.ok) throw new Error(res.status + ' ' + String((js && js.error && js.error.message) || txt).slice(0, 300));
+  return js;
+}
+
+// 1セット1レコードのlogsを「その日の筋トレセッション」1件にまとめる
+function ghealthSessions() {
+  const byDate = {};
+  for (const l of logs) {
+    if (!l || !l.date || !l.ts) continue;
+    (byDate[l.date] || (byDate[l.date] = [])).push(l);
+  }
+  return Object.keys(byDate).sort().map(date => {
+    const items = byDate[date].slice().sort((a, b) => a.ts - b.ts);
+    const start = items[0].ts;
+    let end = items[items.length - 1].ts + 3 * 60 * 1000; // 最後のセット分を3分とみなす
+    if (end - start < 10 * 60 * 1000) end = start + 10 * 60 * 1000; // 短すぎる日は10分に丸める
+    return {
+      date, start, end,
+      sets: items.length,
+      volume: items.reduce((s, i) => s + (i.volume || 0), 0),
+      id: String(start)
+    };
+  });
+}
+
+function ghealthSynced() {
+  try { return JSON.parse(localStorage.getItem(GHEALTH_SYNCED) || '{}'); } catch (e) { return {}; }
+}
+function ghealthMarkSynced(date) {
+  const s = ghealthSynced(); s[date] = Date.now();
+  localStorage.setItem(GHEALTH_SYNCED, JSON.stringify(s));
+}
+function ghealthRenderInfo() {
+  const el = document.getElementById('ghealth-push-info');
+  if (!el) return;
+  const s = ghealthSynced();
+  const all = ghealthSessions();
+  const un  = all.filter(x => !s[x.date]);
+  el.textContent = `トレーニング日 ${all.length}日 / 未送信 ${un.length}日`
+    + (un.length ? `（最古 ${un[0].date} ／ 最新 ${un[un.length - 1].date}）` : '');
+}
+
+function ghealthPush(latestOnly) { ghealthConnect(() => ghealthPushRun(latestOnly)); }
+async function ghealthPushRun(latestOnly) {
+  const s = ghealthSynced();
+  let targets = ghealthSessions().filter(x => !s[x.date]);
+  if (latestOnly) targets = targets.slice(-1);
+  if (!targets.length) { ghealthLog('送信するものがありません'); return; }
+  ghealthLog(`${targets.length}件を送信します...`);
+  let ok = 0, ng = 0;
+  for (const t of targets) {
+    const body = {
+      exercise: {
+        interval: {
+          startTime: new Date(t.start).toISOString(),
+          endTime:   new Date(t.end).toISOString()
+        },
+        exerciseType: 'STRENGTH_TRAINING'
+      }
+    };
+    try {
+      await ghealthApi(`/dataTypes/exercise/dataPoints/${t.id}`, 'PATCH', body);
+      ghealthMarkSynced(t.date); ok++;
+      ghealthLog(`✓ ${t.date}（${t.sets}セット / ${Math.round((t.end - t.start) / 60000)}分）`);
+    } catch (e) {
+      ng++;
+      ghealthLog(`✗ ${t.date} → ${e.message}`);
+      if (ng >= 3) { ghealthLog('エラーが続くので中断しました'); break; }
+    }
+  }
+  ghealthLog(`完了: 成功 ${ok} / 失敗 ${ng}`);
+  ghealthRenderInfo();
+}
+
+function ghealthPull() { ghealthConnect(ghealthPullRun); }
+async function ghealthPullRun() {
+  const out = document.getElementById('ghealth-pull-out');
+  const types = ['weight', 'sleep', 'daily-resting-heart-rate', 'heart-rate-variability', 'steps'];
+  const result = {};
+  for (const t of types) {
+    try {
+      const js = await ghealthApi(`/dataTypes/${t}/dataPoints?pageSize=3`);
+      const pts = (js && js.dataPoints) ? js.dataPoints : [];
+      result[t] = pts;
+      ghealthLog(`取得 ${t}: ${pts.length}件`);
+    } catch (e) {
+      result[t] = 'ERROR: ' + e.message;
+      ghealthLog(`✗ ${t} → ${e.message}`);
+    }
+  }
+  if (out) out.textContent = JSON.stringify(result, null, 1);
+}
 
 // ── 日付変わったら自動リロード ────────────────────
 const _loadedDate = today();
