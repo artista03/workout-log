@@ -4228,6 +4228,7 @@ const GHEALTH_SCOPES = [
 ].join(' ');
 const GHEALTH_BASE   = 'https://health.googleapis.com/v4/users/me';
 const GHEALTH_SYNCED = 'ghealth_synced';
+const GHEALTH_VER    = 'v2 (POST create)';  // キャッシュ判別用
 let ghealthToken = null, ghealthExpiry = 0, ghealthClient = null, ghealthPending = null;
 
 function ghealthLog(msg) {
@@ -4255,7 +4256,7 @@ function ghealthInit() {
       ghealthToken  = resp.access_token;
       ghealthExpiry = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
       ghealthSetStatus(true);
-      ghealthLog('接続しました');
+      ghealthLog('接続しました / コード ' + GHEALTH_VER);
       if (next) next();
     },
     error_callback: (err) => {
@@ -4281,7 +4282,8 @@ async function ghealthApi(path, method, body) {
   });
   const txt = await res.text();
   let js = null; try { js = JSON.parse(txt); } catch (e) {}
-  if (!res.ok) throw new Error(res.status + ' ' + String((js && js.error && js.error.message) || txt).slice(0, 300));
+  if (!res.ok) throw new Error(res.status + ' [' + (method || 'GET') + ' ' + path.split('?')[0] + '] '
+    + String((js && js.error && js.error.message) || txt).slice(0, 200));
   return js;
 }
 
@@ -4352,6 +4354,7 @@ async function ghealthPushRun(latestOnly) {
       ghealthLog(`✗ ${t.date} → ${e.message}`);
       if (ng >= 3) { ghealthLog('エラーが続くので中断しました'); break; }
     }
+    await new Promise(r => setTimeout(r, 250)); // レート制限よけ
   }
   ghealthLog(`完了: 成功 ${ok} / 失敗 ${ng}`);
   ghealthRenderInfo();
@@ -4360,7 +4363,7 @@ async function ghealthPushRun(latestOnly) {
 function ghealthPull() { ghealthConnect(ghealthPullRun); }
 async function ghealthPullRun() {
   const out = document.getElementById('ghealth-pull-out');
-  const types = ['weight', 'sleep', 'daily-resting-heart-rate', 'heart-rate-variability', 'steps'];
+  const types = ['exercise', 'weight', 'sleep', 'daily-resting-heart-rate', 'heart-rate-variability', 'steps'];
   const result = {};
   for (const t of types) {
     try {
