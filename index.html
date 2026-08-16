@@ -1085,8 +1085,9 @@
     <div class="card">
       <h2>💪 筋トレを送信</h2>
       <p id="ghealth-push-info" style="color:#888;font-size:14px;margin-bottom:10px">—</p>
-      <button class="primary" onclick="ghealthPush(true)">最新1日だけ送る（テスト）</button>
+      <button class="primary" onclick="ghealthPush(true)">最新1件だけ送る（テスト）</button>
       <button class="secondary" onclick="ghealthPush(false)">未送信をぜんぶ送る</button>
+      <button class="secondary" onclick="ghealthDeleteMine()" style="color:#e66">送ったデータを全部削除</button>
     </div>
 
     <div class="card">
@@ -4234,8 +4235,8 @@ const GHEALTH_SCOPES = [
   'https://www.googleapis.com/auth/googlehealth.sleep.readonly'
 ].join(' ');
 const GHEALTH_BASE   = 'https://health.googleapis.com/v4/users/me';
-const GHEALTH_SYNCED = 'ghealth_synced';
-const GHEALTH_VER    = 'v3 (JST補正)';  // キャッシュ判別用
+const GHEALTH_SYNCED = 'ghealth_synced_v2'; // セッション分割に伴いキーを刷新（日付単位→セッション単位）
+const GHEALTH_VER    = 'v4 (セッション分割)';  // キャッシュ判別用
 let ghealthToken = null, ghealthExpiry = 0, ghealthClient = null, ghealthPending = null;
 
 function ghealthLog(msg) {
@@ -4295,32 +4296,50 @@ async function ghealthApi(path, method, body) {
   return js;
 }
 
-// 1セット1レコードのlogsを「その日の筋トレセッション」1件にまとめる
+// 1セット1レコードのlogsをトレーニングセッションにまとめる。
+// 1日を丸ごと1本にすると、朝と夜に分けてやった日が「16時間のトレーニング」になってしまう。
+// セット間が90分以上空いたら別セッションとして切り、念のため1本120分で頭打ちにする。
+const GHEALTH_GAP_MS = 90 * 60 * 1000;
+const GHEALTH_MAX_MS = 120 * 60 * 1000;
+
 function ghealthSessions() {
   const byDate = {};
   for (const l of logs) {
     if (!l || !l.date || !l.ts) continue;
     (byDate[l.date] || (byDate[l.date] = [])).push(l);
   }
-  return Object.keys(byDate).sort().map(date => {
-    const items = byDate[date].slice().sort((a, b) => a.ts - b.ts);
-    const start = items[0].ts;
-    let end = items[items.length - 1].ts + 3 * 60 * 1000; // 最後のセット分を3分とみなす
-    if (end - start < 10 * 60 * 1000) end = start + 10 * 60 * 1000; // 短すぎる日は10分に丸める
+  const mk = (date, block) => {
+    const start = block[0].ts;
+    let end = block[block.length - 1].ts + 3 * 60 * 1000; // 最後のセット分を3分とみなす
+    if (end - start < 10 * 60 * 1000) end = start + 10 * 60 * 1000; // 短すぎるものは10分に丸める
+    if (end - start > GHEALTH_MAX_MS) end = start + GHEALTH_MAX_MS;
     return {
       date, start, end,
-      sets: items.length,
-      volume: items.reduce((s, i) => s + (i.volume || 0), 0),
+      sets: block.length,
+      volume: block.reduce((s, i) => s + (i.volume || 0), 0),
       id: String(start)
     };
-  });
+  };
+  const out = [];
+  for (const date of Object.keys(byDate).sort()) {
+    const items = byDate[date].slice().sort((a, b) => a.ts - b.ts);
+    let block = [];
+    for (const it of items) {
+      if (block.length && it.ts - block[block.length - 1].ts > GHEALTH_GAP_MS) {
+        out.push(mk(date, block)); block = [];
+      }
+      block.push(it);
+    }
+    if (block.length) out.push(mk(date, block));
+  }
+  return out;
 }
 
 function ghealthSynced() {
   try { return JSON.parse(localStorage.getItem(GHEALTH_SYNCED) || '{}'); } catch (e) { return {}; }
 }
-function ghealthMarkSynced(date, name) {
-  const s = ghealthSynced(); s[date] = name || Date.now();
+function ghealthMarkSynced(id, name) {
+  const s = ghealthSynced(); s[id] = name || Date.now();
   localStorage.setItem(GHEALTH_SYNCED, JSON.stringify(s));
 }
 function ghealthRenderInfo() {
@@ -4328,15 +4347,15 @@ function ghealthRenderInfo() {
   if (!el) return;
   const s = ghealthSynced();
   const all = ghealthSessions();
-  const un  = all.filter(x => !s[x.date]);
-  el.textContent = `トレーニング日 ${all.length}日 / 未送信 ${un.length}日`
-    + (un.length ? `（最古 ${un[0].date} ／ 最新 ${un[un.length - 1].date}）` : '');
+  const un  = all.filter(x => !s[x.id]);
+  el.textContent = `セッション ${all.length}件 / 未送信 ${un.length}件`
+    + (un.length ? `（${un[0].date} 〜 ${un[un.length - 1].date}）` : '');
 }
 
 function ghealthPush(latestOnly) { ghealthConnect(() => ghealthPushRun(latestOnly)); }
 async function ghealthPushRun(latestOnly) {
   const s = ghealthSynced();
-  let targets = ghealthSessions().filter(x => !s[x.date]);
+  let targets = ghealthSessions().filter(x => !s[x.id]);
   if (latestOnly) targets = targets.slice(-1);
   if (!targets.length) { ghealthLog('送信するものがありません'); return; }
   ghealthLog(`${targets.length}件を送信します...`);
@@ -4357,7 +4376,7 @@ async function ghealthPushRun(latestOnly) {
       const res = await ghealthApi('/dataTypes/exercise/dataPoints', 'POST', body);
       if (ok === 0) ghealthLog('レスポンス: ' + JSON.stringify(res).slice(0, 300));
       const nm = res && (res.name || (res.response && res.response.name));
-      ghealthMarkSynced(t.date, nm); ok++;
+      ghealthMarkSynced(t.id, nm); ok++;
       ghealthLog(`✓ ${t.date}（${t.sets}セット / ${Math.round((t.end - t.start) / 60000)}分）`);
     } catch (e) {
       ng++;
@@ -4368,6 +4387,45 @@ async function ghealthPushRun(latestOnly) {
   }
   ghealthLog(`完了: 成功 ${ok} / 失敗 ${ng}`);
   ghealthRenderInfo();
+}
+
+// このアプリが送った運動データだけを消す（Fitbitが記録したものには触らない）
+function ghealthDeleteMine() {
+  if (!confirm('Google Healthに送った筋トレデータを全部削除します。\n\n・Fitbitが記録したデータは消えません\n・workout-log本体の記録も消えません\n\n実行しますか？')) return;
+  ghealthConnect(ghealthDeleteMineRun);
+}
+async function ghealthDeleteMineRun() {
+  ghealthLog('このアプリが送ったデータを探しています...');
+  const names = [];
+  let token = null, pages = 0;
+  try {
+    do {
+      const js = await ghealthApi('/dataTypes/exercise/dataPoints?pageSize=25'
+        + (token ? '&pageToken=' + encodeURIComponent(token) : ''));
+      for (const p of (js && js.dataPoints) || []) {
+        // 送信元がこのアプリ（GOOGLE_WEB_API）のものだけを対象にする
+        if (p.name && p.dataSource && p.dataSource.platform === 'GOOGLE_WEB_API') names.push(p.name);
+      }
+      token = js && js.nextPageToken;
+    } while (token && ++pages < 80);
+  } catch (e) { ghealthLog('一覧の取得に失敗: ' + e.message); return; }
+
+  ghealthLog(`削除対象 ${names.length}件`);
+  if (!names.length) { ghealthLog('消すものがありません'); return; }
+
+  let done = 0;
+  for (let i = 0; i < names.length; i += 50) {
+    const chunk = names.slice(i, i + 50);
+    try {
+      await ghealthApi('/dataTypes/exercise/dataPoints:batchDelete', 'POST', { names: chunk });
+      done += chunk.length;
+      ghealthLog(`削除 ${done}/${names.length}`);
+    } catch (e) { ghealthLog('削除に失敗: ' + e.message); break; }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  localStorage.removeItem(GHEALTH_SYNCED);
+  ghealthRenderInfo();
+  ghealthLog(`完了。${done}件を削除し、送信済みの記録もリセットしました`);
 }
 
 function ghealthPull() { ghealthConnect(ghealthPullRun); }
