@@ -4216,8 +4216,8 @@ window.addEventListener('online', () => {
 });
 
 // ── Google Health 連携 ────────────────────────────
-// 書き込み: PATCH /users/me/dataTypes/exercise/dataPoints/{id}
-//   idはその日の最初のセットのts。同じ日を何度送っても上書きになるので重複しない
+// 書き込み: POST /users/me/dataTypes/exercise/dataPoints（IDはGoogle側が採番）
+//   PATCHは既存データの更新専用で新規作成に使えないため、重複はlocalStorageの送信済み記録で防ぐ
 // 読み取り: GET /users/me/dataTypes/{型}/dataPoints（新しい順）
 const GHEALTH_CLIENT_ID = '668771941549-qljmfep7ihp1kakusdru5e2bks5t165i.apps.googleusercontent.com';
 const GHEALTH_SCOPES = [
@@ -4309,8 +4309,8 @@ function ghealthSessions() {
 function ghealthSynced() {
   try { return JSON.parse(localStorage.getItem(GHEALTH_SYNCED) || '{}'); } catch (e) { return {}; }
 }
-function ghealthMarkSynced(date) {
-  const s = ghealthSynced(); s[date] = Date.now();
+function ghealthMarkSynced(date, name) {
+  const s = ghealthSynced(); s[date] = name || Date.now();
   localStorage.setItem(GHEALTH_SYNCED, JSON.stringify(s));
 }
 function ghealthRenderInfo() {
@@ -4342,8 +4342,10 @@ async function ghealthPushRun(latestOnly) {
       }
     };
     try {
-      await ghealthApi(`/dataTypes/exercise/dataPoints/${t.id}`, 'PATCH', body);
-      ghealthMarkSynced(t.date); ok++;
+      const res = await ghealthApi('/dataTypes/exercise/dataPoints', 'POST', body);
+      if (ok === 0) ghealthLog('レスポンス: ' + JSON.stringify(res).slice(0, 300));
+      const nm = res && (res.name || (res.response && res.response.name));
+      ghealthMarkSynced(t.date, nm); ok++;
       ghealthLog(`✓ ${t.date}（${t.sets}セット / ${Math.round((t.end - t.start) / 60000)}分）`);
     } catch (e) {
       ng++;
