@@ -1090,7 +1090,13 @@
     </div>
 
     <div class="card">
-      <h2>⌚ Fitbit のデータを取得</h2>
+      <h2>🔋 今日のコンディション</h2>
+      <p style="color:#888;font-size:13px;margin-bottom:10px">睡眠・安静時心拍・HRVから「追い込む日か流す日か」を判定して、筋トレタブの提案に出します。</p>
+      <button class="primary" onclick="ghealthRefreshCondition()">コンディションを更新</button>
+    </div>
+
+    <div class="card">
+      <h2>⌚ Fitbit のデータを取得（生データ）</h2>
       <button class="primary" onclick="ghealthPull()">体重・睡眠・心拍を取得</button>
       <pre id="ghealth-pull-out" style="margin-top:10px;max-height:320px;overflow:auto;font-size:11px;line-height:1.5;color:#8c8;white-space:pre-wrap"></pre>
     </div>
@@ -3990,7 +3996,7 @@ function renderTodayMenu() {
   }
 
   if (!targets.length) {
-    el.innerHTML = '<div style="font-size:13px;color:#888;line-height:1.6">全部位が回復中。今日は完全休養か有酸素だけにしておけ。休むのも仕事だ。</div>';
+    el.innerHTML = ghealthConditionHtml() + '<div style="font-size:13px;color:#888;line-height:1.6">全部位が回復中。今日は完全休養か有酸素だけにしておけ。休むのも仕事だ。</div>';
     return;
   }
 
@@ -4012,7 +4018,8 @@ function renderTodayMenu() {
   }
 
   const targetLabel = targets.slice(0, 2).map(g => `${g.name}（${g.days}日ぶり）`).join(' ＋ ');
-  let html = `<div style="font-size:12px;color:#888;margin-bottom:10px">${fallback ? '回復途中だが、やるなら一番休んでいる部位：' : '今日鍛えるべきは：'}<strong style="color:#ff8866">${esc(targetLabel)}</strong></div>`;
+  let html = ghealthConditionHtml();
+  html += `<div style="font-size:12px;color:#888;margin-bottom:10px">${fallback ? '回復途中だが、やるなら一番休んでいる部位：' : '今日鍛えるべきは：'}<strong style="color:#ff8866">${esc(targetLabel)}</strong></div>`;
 
   html += items.map(item => {
     const p = prescribe(item.ex);
@@ -4256,6 +4263,7 @@ function ghealthInit() {
       ghealthToken  = resp.access_token;
       ghealthExpiry = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
       ghealthSetStatus(true);
+      localStorage.setItem('ghealth_consented', '1'); // 次回から無音で更新できる
       ghealthLog('接続しました / コード ' + GHEALTH_VER);
       if (next) next();
     },
@@ -4380,6 +4388,134 @@ async function ghealthPullRun() {
   }
   if (out) out.textContent = JSON.stringify(result, null, 1);
 }
+
+// ── Fitbitの回復指標でコンディション判定 ───────────
+// 睡眠時間 / 安静時心拍（平常比） / HRV（平常比）の3つを見て、追い込む日か流す日かを出す
+const GHEALTH_COND = 'ghealth_condition';
+
+function ghealthGetCondition() {
+  try {
+    const c = JSON.parse(localStorage.getItem(GHEALTH_COND) || 'null');
+    return (c && c.date === today()) ? c : null;
+  } catch (e) { return null; }
+}
+
+function ghealthMedian(a) {
+  if (!a.length) return null;
+  const s = a.slice().sort((x, y) => x - y);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : Math.round((s[m - 1] + s[m]) / 2);
+}
+
+async function ghealthFetchCondition() {
+  const cond = { date: today(), fetchedAt: Date.now() };
+
+  // 睡眠：直近のメインスリープ（昼寝は除く）
+  try {
+    const js = await ghealthApi('/dataTypes/sleep/dataPoints?pageSize=5');
+    const pts = (js && js.dataPoints) || [];
+    const main = pts.find(p => p.sleep && p.sleep.metadata && p.sleep.metadata.mainSleep);
+    if (main && main.sleep.summary) {
+      cond.sleepMin = Number(main.sleep.summary.minutesAsleep) || null;
+      const deep = (main.sleep.summary.stagesSummary || []).find(s => s.type === 'DEEP');
+      if (deep) cond.deepMin = Number(deep.minutes) || null;
+    }
+  } catch (e) { ghealthLog('睡眠の取得に失敗: ' + e.message); }
+
+  // 安静時心拍：最新と、それ以前の中央値（平常値）を比べる
+  try {
+    const js = await ghealthApi('/dataTypes/daily-resting-heart-rate/dataPoints?pageSize=15');
+    const vals = ((js && js.dataPoints) || [])
+      .map(p => Number(p.dailyRestingHeartRate && p.dailyRestingHeartRate.beatsPerMinute))
+      .filter(v => v > 0);
+    if (vals.length) {
+      cond.rhr = vals[0];
+      if (vals.length >= 4) cond.rhrBase = ghealthMedian(vals.slice(1));
+    }
+  } catch (e) { ghealthLog('安静時心拍の取得に失敗: ' + e.message); }
+
+  // HRV：日次型があればそれを、無ければ5分刻みを日ごとに平均する
+  for (const dt of ['daily-heart-rate-variability', 'heart-rate-variability']) {
+    try {
+      const js = await ghealthApi(`/dataTypes/${dt}/dataPoints?pageSize=300`);
+      const pts = (js && js.dataPoints) || [];
+      if (!pts.length) continue;
+      const byDay = {};
+      for (const p of pts) {
+        const o = p.dailyHeartRateVariability || p.heartRateVariability;
+        if (!o) continue;
+        const d = o.date || (o.sampleTime && o.sampleTime.civilTime && o.sampleTime.civilTime.date);
+        const v = Number(o.rootMeanSquareOfSuccessiveDifferencesMilliseconds);
+        if (!d || !v) continue;
+        const key = `${d.year}-${String(d.month).padStart(2, '0')}-${String(d.day).padStart(2, '0')}`;
+        (byDay[key] || (byDay[key] = [])).push(v);
+      }
+      const days = Object.keys(byDay).sort().reverse();
+      if (!days.length) continue;
+      const avg = a => a.reduce((s, x) => s + x, 0) / a.length;
+      const r1 = v => Math.round(v * 10) / 10;
+      cond.hrv = r1(avg(byDay[days[0]]));
+      const base = days.slice(1, 8).map(d => avg(byDay[d]));
+      if (base.length >= 2) cond.hrvBase = r1(avg(base));
+      break;
+    } catch (e) { /* 次の型を試す */ }
+  }
+
+  // 判定：赤信号の数で決める
+  const flags = [];
+  if (cond.sleepMin != null && cond.sleepMin < 360) {
+    flags.push(`睡眠${Math.floor(cond.sleepMin / 60)}時間${cond.sleepMin % 60}分`);
+  }
+  if (cond.rhr != null && cond.rhrBase != null && cond.rhr >= cond.rhrBase + 3) {
+    flags.push(`安静時心拍+${cond.rhr - cond.rhrBase}bpm`);
+  }
+  if (cond.hrv != null && cond.hrvBase != null && cond.hrv <= cond.hrvBase * 0.85) {
+    flags.push('HRV低下');
+  }
+  cond.flags = flags;
+  cond.level = flags.length >= 2 ? 'easy' : (flags.length === 1 ? 'normal' : 'go');
+
+  localStorage.setItem(GHEALTH_COND, JSON.stringify(cond));
+  ghealthLog(`コンディション更新: ${cond.level}${flags.length ? '（' + flags.join('・') + '）' : ''}`);
+  return cond;
+}
+
+function ghealthRefreshCondition() {
+  ghealthConnect(() => ghealthFetchCondition().then(() => {
+    renderTodayMenu();
+    ghealthLog('筋トレタブの提案に反映しました');
+  }).catch(e => ghealthLog('失敗: ' + e.message)));
+}
+
+function ghealthConditionHtml() {
+  const c = ghealthGetCondition();
+  if (!c) return '';
+  const conf = {
+    go:     { color: '#4c4', label: '攻めていい', msg: '回復してる。今日は重量を狙え。' },
+    normal: { color: '#dc4', label: 'ふつう',     msg: '悪くない。いつも通りでいけ。' },
+    easy:   { color: '#e66', label: '軽めにしろ', msg: '体が戻ってない。今日追い込んでも伸びない。' }
+  }[c.level];
+  if (!conf) return '';
+  const parts = [];
+  if (c.sleepMin != null) parts.push(`睡眠 ${Math.floor(c.sleepMin / 60)}h${String(c.sleepMin % 60).padStart(2, '0')}` + (c.deepMin != null ? `（深い${c.deepMin}分）` : ''));
+  if (c.rhr != null) parts.push(`安静時心拍 ${c.rhr}` + (c.rhrBase != null ? `／平常${c.rhrBase}` : ''));
+  if (c.hrv != null) parts.push(`HRV ${c.hrv}` + (c.hrvBase != null ? `／平常${c.hrvBase}` : ''));
+  return `<div style="border-left:3px solid ${conf.color};padding:9px 11px;margin-bottom:12px;background:#151515;border-radius:6px">
+    <div style="font-size:13px;font-weight:700;color:${conf.color}">今日のコンディション：${conf.label}</div>
+    <div style="font-size:12px;color:#999;margin-top:4px">${esc(conf.msg)}</div>
+    <div style="font-size:11px;color:#666;margin-top:6px">${esc(parts.join(' ／ '))}</div>
+    ${c.flags && c.flags.length ? `<div style="font-size:11px;color:#e88;margin-top:4px">⚠ ${esc(c.flags.join('・'))}</div>` : ''}
+  </div>`;
+}
+
+// 起動時：同意済みならポップアップ無しでトークンを取り直してコンディションを更新
+setTimeout(() => {
+  if (localStorage.getItem('ghealth_consented') !== '1') return;
+  if (ghealthGetCondition()) { renderTodayMenu(); return; } // 今日の分は取得済み
+  if (!ghealthInit()) return;
+  ghealthPending = () => ghealthFetchCondition().then(renderTodayMenu).catch(() => {});
+  try { ghealthClient.requestAccessToken({ prompt: '' }); } catch (e) {}
+}, 2500);
 
 // ── 日付変わったら自動リロード ────────────────────
 const _loadedDate = today();
