@@ -4228,7 +4228,7 @@ const GHEALTH_SCOPES = [
 ].join(' ');
 const GHEALTH_BASE   = 'https://health.googleapis.com/v4/users/me';
 const GHEALTH_SYNCED = 'ghealth_synced';
-const GHEALTH_VER    = 'v2 (POST create)';  // キャッシュ判別用
+const GHEALTH_VER    = 'v3 (JST補正)';  // キャッシュ判別用
 let ghealthToken = null, ghealthExpiry = 0, ghealthClient = null, ghealthPending = null;
 
 function ghealthLog(msg) {
@@ -4338,7 +4338,9 @@ async function ghealthPushRun(latestOnly) {
       exercise: {
         interval: {
           startTime: new Date(t.start).toISOString(),
-          endTime:   new Date(t.end).toISOString()
+          startUtcOffset: '32400s',  // JST(+9h)。無いとUTC扱いで9時間ずれる
+          endTime:   new Date(t.end).toISOString(),
+          endUtcOffset: '32400s'
         },
         exerciseType: 'STRENGTH_TRAINING'
       }
