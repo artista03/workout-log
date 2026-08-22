@@ -14093,5 +14093,15 @@
     "sets": 1,
     "rir": null,
     "volume": 250
+  },
+  {
+    "date": "2026-08-22",
+    "ts": 1787374451198,
+    "exercise": "ラテラルレイズ",
+    "kg": 10,
+    "reps": 25,
+    "sets": 1,
+    "rir": null,
+    "volume": 250
   }
 ]
