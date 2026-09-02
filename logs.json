@@ -14853,5 +14853,15 @@
     "sets": 1,
     "rir": null,
     "volume": 80
+  },
+  {
+    "date": "2026-09-02",
+    "ts": 1788312325380,
+    "exercise": "レッグレイズ",
+    "kg": 30,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 300
   }
 ]
