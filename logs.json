@@ -15073,5 +15073,25 @@
     "sets": 1,
     "rir": null,
     "volume": 300
+  },
+  {
+    "date": "2026-09-08",
+    "ts": 1788848722000,
+    "exercise": "ラッドプル",
+    "kg": 30,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 300
+  },
+  {
+    "date": "2026-09-08",
+    "ts": 1788848722528,
+    "exercise": "ラッドプル",
+    "kg": 30,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 300
   }
 ]
