@@ -15553,5 +15553,15 @@
     "sets": 1,
     "rir": null,
     "volume": 78
+  },
+  {
+    "date": "2026-09-15",
+    "ts": 1789445058494,
+    "exercise": "自重スクワット",
+    "kg": 40,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 400
   }
 ]
