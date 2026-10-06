@@ -1878,7 +1878,20 @@ function onExerciseSelect() {
   if (sel.value === '__new__') document.getElementById('exercise-new').focus();
 
   renderExerciseStats(sel.value);
+  fillLastValues(sel.value);
   updateKgHint();
+}
+
+// メニューを選んだら、そのメニューの前回の kg / 回数 / セット を入力欄に入れる（無ければ空）
+function fillLastValues(exercise) {
+  const exLogs = (!exercise || exercise === '__new__')
+    ? []
+    : logs.filter(l => l.exercise === exercise).sort((a,b) => (a.ts||0)-(b.ts||0));
+  const last = exLogs[exLogs.length - 1];
+  document.getElementById('kg').value   = last ? last.kg : '';
+  document.getElementById('reps').value = last ? last.reps : '';
+  document.getElementById('sets').value = last ? (last.sets || 1) : 1;
+  document.getElementById('rir').value  = '';
 }
 
 function renderExerciseStats(exercise) {
