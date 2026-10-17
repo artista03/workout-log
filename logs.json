@@ -18923,5 +18923,15 @@
     "sets": 1,
     "rir": null,
     "volume": 450
+  },
+  {
+    "date": "2026-10-17",
+    "ts": 1792218618862,
+    "exercise": "腕立て伏せ",
+    "kg": 45,
+    "reps": 10,
+    "sets": 1,
+    "rir": null,
+    "volume": 450
   }
 ]
