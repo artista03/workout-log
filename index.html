@@ -1031,17 +1031,20 @@
     <div class="card">
       <h2>有酸素記録</h2>
       <div class="input-row">
-        <select id="cardio-type" style="flex:1;background:#2a2a2a;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px;padding:10px 12px;">
+        <select id="cardio-type" onchange="updateCardioInputs()" style="flex:1;background:#2a2a2a;border:1px solid #333;border-radius:8px;color:#fff;font-size:16px;padding:10px 12px;">
           <option value="エアロバイク">エアロバイク</option>
           <option value="ランニング">ランニング</option>
           <option value="ウォーキング">ウォーキング</option>
           <option value="クロストレーナー">クロストレーナー</option>
           <option value="ロウイング">ロウイング</option>
+          <option value="クロール">クロール</option>
+          <option value="平泳ぎ">平泳ぎ</option>
           <option value="その他">その他</option>
         </select>
       </div>
       <div class="input-row">
         <input type="number" id="cardio-load" placeholder="負荷（例：8）" min="1" max="30" style="flex:1">
+        <input type="number" id="cardio-m" placeholder="距離m（例：500）" min="1" step="25" style="flex:1;display:none">
         <input type="number" id="cardio-min" placeholder="分数（例：45）" min="1" style="flex:1">
       </div>
       <button class="primary" onclick="addCardio()">記録する</button>
@@ -1061,6 +1064,24 @@
         <div class="stat">
           <div class="value" id="cardio-monthly-min">0</div>
           <div class="label">今月 (分)</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>水泳 累計</h2>
+      <div class="stat-row">
+        <div class="stat">
+          <div class="value" id="swim-daily-m">0</div>
+          <div class="label">今日 (m)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="swim-weekly-m">0</div>
+          <div class="label">今週 (m)</div>
+        </div>
+        <div class="stat">
+          <div class="value" id="swim-monthly-m">0</div>
+          <div class="label">今月 (m)</div>
         </div>
       </div>
     </div>
@@ -1559,20 +1580,44 @@ async function saveCardioLogs(deletedTs = null) {
   renderCardio();
 }
 
+// ── 水泳（距離mで管理） ──────────────────────────
+const SWIM_TYPES = ['クロール', '平泳ぎ'];
+const isSwim = (e) => SWIM_TYPES.includes(e.exercise);
+
+// 1件の有酸素記録を「負荷8 × 30分」「500m（20分）」の形に
+function cardioDetail(e) {
+  if (isSwim(e)) return `${e.m}m${e.min ? `（${e.min}分）` : ''}`;
+  return `負荷 ${e.load} × ${e.min}分`;
+}
+
+function updateCardioInputs() {
+  const swim = SWIM_TYPES.includes(document.getElementById('cardio-type').value);
+  document.getElementById('cardio-load').style.display = swim ? 'none' : '';
+  document.getElementById('cardio-m').style.display    = swim ? '' : 'none';
+  document.getElementById('cardio-min').placeholder    = swim ? '分数（任意）' : '分数（例：45）';
+}
+
 // ── 有酸素 記録追加 ──────────────────────────────
 async function addCardio() {
-  const load = parseInt(document.getElementById('cardio-load').value);
-  const min  = parseInt(document.getElementById('cardio-min').value);
-  if (!load || !min) { alert('負荷と分数を入力してください'); return; }
-
   const exercise = document.getElementById('cardio-type').value;
-  const entry = { date: today(), ts: Date.now(), exercise, load, min };
+  const min  = parseInt(document.getElementById('cardio-min').value);
+  let entry;
+  if (SWIM_TYPES.includes(exercise)) {
+    const m = parseInt(document.getElementById('cardio-m').value);
+    if (!m) { alert('距離（m）を入力してください'); return; }
+    entry = { date: today(), ts: Date.now(), exercise, m, min: min || 0 };
+  } else {
+    const load = parseInt(document.getElementById('cardio-load').value);
+    if (!load || !min) { alert('負荷と分数を入力してください'); return; }
+    entry = { date: today(), ts: Date.now(), exercise, load, min };
+  }
   cardioLogs.push(entry);
   renderCardio();
 
   document.getElementById('cardio-load').value = '';
+  document.getElementById('cardio-m').value    = '';
   document.getElementById('cardio-min').value  = '';
-  document.getElementById('cardio-load').focus();
+  document.getElementById(isSwim(entry) ? 'cardio-m' : 'cardio-load').focus();
 
   // チアアップ＆保存
   showCardioCheerLoading();
@@ -1596,17 +1641,19 @@ function showCardioCheer(text) {
 }
 
 async function getCardioCheer(entry) {
+  if (isSwim(entry)) return getSwimCheer(entry);
   const t = today(), w = weekStart(), m = monthStr();
   const todayMin   = cardioLogs.filter(e => e.date === t).reduce((s,e) => s+e.min, 0);
   const weeklyMin  = cardioLogs.filter(e => e.date >= w).reduce((s,e) => s+e.min, 0);
   const monthlyMin = cardioLogs.filter(e => e.date.slice(0,7) === m).reduce((s,e) => s+e.min, 0);
   const totalSessions = cardioLogs.length;
-  const avgLoad = cardioLogs.length > 1
-    ? Math.round(cardioLogs.slice(0,-1).reduce((s,e) => s+e.load, 0) / (cardioLogs.length-1) * 10) / 10
+  const loadLogs = cardioLogs.filter(e => !isSwim(e));
+  const avgLoad = loadLogs.length > 1
+    ? Math.round(loadLogs.slice(0,-1).reduce((s,e) => s+e.load, 0) / (loadLogs.length-1) * 10) / 10
     : null;
-  const maxLoad = cardioLogs.length > 1 ? Math.max(...cardioLogs.slice(0,-1).map(e => e.load)) : 0;
+  const maxLoad = loadLogs.length > 1 ? Math.max(...loadLogs.slice(0,-1).map(e => e.load)) : 0;
   const isPRLoad = maxLoad > 0 && entry.load > maxLoad;
-  const last5 = [...cardioLogs].slice(-6,-1).map(e => `負荷${e.load}×${e.min}分`).join(' → ');
+  const last5 = [...loadLogs].slice(-6,-1).map(e => `負荷${e.load}×${e.min}分`).join(' → ');
 
   const prompt = `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
 
@@ -1642,6 +1689,49 @@ ${isPRLoad ? `★★★ 負荷の自己ベスト更新！（過去最高 ${maxLo
   }
 }
 
+async function getSwimCheer(entry) {
+  const t = today(), w = weekStart(), m = monthStr();
+  const swims = cardioLogs.filter(isSwim);
+  const sumM = (filter) => swims.filter(filter).reduce((s,e) => s+(e.m||0), 0);
+  const sameStroke = swims.filter(e => e.exercise === entry.exercise);
+  const prevMax = sameStroke.length > 1 ? Math.max(...sameStroke.slice(0,-1).map(e => e.m)) : 0;
+  const isPR = prevMax > 0 && entry.m > prevMax;
+  const last5 = sameStroke.slice(-6,-1).map(e => `${e.m}m`).join(' → ');
+  const pace = entry.min ? `100mあたり約${(entry.min * 100 / entry.m).toFixed(1)}分` : '';
+
+  const prompt = `あなたは今井陽介専属の鬼パーソナルトレーナーだ。
+
+${buildProfileContext()}
+
+【今日の${entry.exercise}記録】
+距離: ${entry.m}m
+${entry.min ? `時間: ${entry.min}分（${pace}）` : ''}
+${isPR ? `★★★ ${entry.exercise}の距離の自己ベスト更新！（過去最高 ${prevMax}m → 今日 ${entry.m}m）` : ''}
+
+【水泳データ】
+${entry.exercise}の過去最高: ${prevMax ? prevMax + 'm' : '初記録'}
+${entry.exercise}の直近の推移: ${last5 || 'なし'}
+今日の水泳合計: ${sumM(e => e.date === t)}m
+今週の水泳合計: ${sumM(e => e.date >= w)}m
+今月の水泳合計: ${sumM(e => e.date.slice(0,7) === m)}m
+水泳の累計セッション数: ${swims.length}回
+
+上記を踏まえ、2〜3文で励ませ。
+ルール：
+- 必ず2〜3文で終わらせる。それ以上書くな
+- マークダウン記法（**、*、#、箇条書き）は絶対禁止
+- 具体的な数字を1つ使う
+- 泳いだ距離の積み上げを彼の哲学（BTC・海賊・商社・旦那衆）のどれかと絡める
+- 口調は「だ・である」調でテンション高め
+- 絵文字は使わない`;
+
+  try {
+    return await callGroq(prompt, 200, 0.9);
+  } catch(e) {
+    return '記録完了！泳ぎ切ったぞ！';
+  }
+}
+
 // ── 有酸素 表示 ──────────────────────────────────
 function renderCardio() {
   const t = today(), w = weekStart(), m = monthStr();
@@ -1649,6 +1739,10 @@ function renderCardio() {
   document.getElementById('cardio-daily-min').textContent   = sum(e => e.date === t);
   document.getElementById('cardio-weekly-min').textContent  = sum(e => e.date >= w);
   document.getElementById('cardio-monthly-min').textContent = sum(e => e.date.slice(0,7) === m);
+  const sumM = (filter) => cardioLogs.filter(e => isSwim(e) && filter(e)).reduce((s,e) => s+(e.m||0), 0);
+  document.getElementById('swim-daily-m').textContent   = sumM(e => e.date === t);
+  document.getElementById('swim-weekly-m').textContent  = sumM(e => e.date >= w);
+  document.getElementById('swim-monthly-m').textContent = sumM(e => e.date.slice(0,7) === m);
 
   const todayCardio = cardioLogs.filter(e => e.date === t).reverse();
   const ul = document.getElementById('today-cardio-log');
@@ -1659,10 +1753,10 @@ function renderCardio() {
       <li class="log-item">
         <div style="flex:1">
           <div class="log-name">${esc(e.exercise || 'エアロバイク')}</div>
-          <div class="log-detail">負荷 ${esc(e.load)} × ${esc(e.min)}分</div>
+          <div class="log-detail">${esc(cardioDetail(e))}</div>
         </div>
         <div style="display:flex;align-items:center;gap:4px">
-          <div class="log-cardio">${esc(e.min)}分</div>
+          <div class="log-cardio">${isSwim(e) ? esc(e.m) + 'm' : esc(e.min) + '分'}</div>
           <button class="del-btn" onclick="deleteCardioLog(${Number(e.ts)})" title="削除">×</button>
         </div>
       </li>`).join('');
@@ -3165,7 +3259,9 @@ function buildChatPrompt(question) {
   const monthVol = calcTotal(e => e.date.slice(0,7) === m);
   const weekCardioMin  = cardioLogs.filter(e => e.date >= w).reduce((s,e) => s+e.min, 0);
   const monthCardioMin = cardioLogs.filter(e => e.date.slice(0,7) === m).reduce((s,e) => s+e.min, 0);
-  const last5Cardio = [...cardioLogs].slice(-5).map(e => `${e.date} 負荷${e.load}×${e.min}分`).join(' / ');
+  const last5Cardio = [...cardioLogs].slice(-5).map(e => `${e.date} ${e.exercise||'エアロバイク'} ${cardioDetail(e)}`).join(' / ');
+  const weekSwimM  = cardioLogs.filter(e => isSwim(e) && e.date >= w).reduce((s,e) => s+(e.m||0), 0);
+  const monthSwimM = cardioLogs.filter(e => isSwim(e) && e.date.slice(0,7) === m).reduce((s,e) => s+(e.m||0), 0);
 
   // 今日のログを別途抽出
   const todayEntries = logs.filter(e => e.date === today());
@@ -3194,7 +3290,7 @@ ${buildProfileContext()}
 【今日（${today()}）のトレーニング】
 ${todaySummary}
 今日の合計ボリューム: ${todayVol.toLocaleString()}kg
-有酸素: ${todayCardio.length ? todayCardio.map(e=>`${e.exercise||'エアロバイク'} 負荷${e.load}×${e.min}分`).join(', ') : 'なし'}
+有酸素: ${todayCardio.length ? todayCardio.map(e=>`${e.exercise||'エアロバイク'} ${cardioDetail(e)}`).join(', ') : 'なし'}
 
 【比較データ】
 今日のボリューム: ${todayVol.toLocaleString()}kg
@@ -3213,6 +3309,7 @@ ${logs.slice(-10).map(e => `${e.date} ${e.exercise} ${e.kg}kg×${e.reps}回×${e
 
 【有酸素データ】
 今週: ${weekCardioMin}分 / 今月: ${monthCardioMin}分
+水泳: 今週${weekSwimM}m / 今月${monthSwimM}m
 直近5回: ${last5Cardio || 'なし'}
 
 【質問】
@@ -3248,7 +3345,7 @@ document.addEventListener('keydown', e => {
     askTrainer();
   } else if (active === document.getElementById('weight-input')) {
     saveWeight();
-  } else if (active === document.getElementById('cardio-load') || active === document.getElementById('cardio-min')) {
+  } else if (['cardio-load', 'cardio-m', 'cardio-min'].includes(active?.id)) {
     addCardio();
   } else if (
     document.getElementById('main-screen').style.display !== 'none' &&
@@ -3756,8 +3853,8 @@ function calClick(d) {
     for (const c of dayCardio) {
       html += `
         <div class="cal-cardio-card">
-          <div class="cal-cardio-title">🚴 ${esc(c.exercise || 'エアロバイク')}</div>
-          <div class="cal-cardio-detail">負荷 ${esc(c.load)} × ${esc(c.min)}分</div>
+          <div class="cal-cardio-title">${isSwim(c) ? '🏊' : '🚴'} ${esc(c.exercise || 'エアロバイク')}</div>
+          <div class="cal-cardio-detail">${esc(cardioDetail(c))}</div>
         </div>
       `;
     }
@@ -4177,7 +4274,8 @@ function exportForGemini(scope) {
     // 有酸素サマリー
     if (cLogs.length > 0) {
       const totalMin = cLogs.reduce((s,l)=>s+(l.min||0),0);
-      md += `## 有酸素サマリー\n計${cLogs.length}回 / 総${totalMin}分\n\n`;
+      const totalSwimM = cLogs.filter(isSwim).reduce((s,l)=>s+(l.m||0),0);
+      md += `## 有酸素サマリー\n計${cLogs.length}回 / 総${totalMin}分${totalSwimM ? ` / 水泳${totalSwimM}m` : ''}\n\n`;
     }
   }
 
@@ -4215,7 +4313,7 @@ function exportForGemini(scope) {
       if (day.cardio.length > 0) {
         day.cardio.forEach(c => {
           const name = c.exercise || '有酸素';
-          md += `- ${name}: 負荷${c.load} × ${c.min}分\n`;
+          md += `- ${name}: ${cardioDetail(c)}\n`;
         });
       }
     });
